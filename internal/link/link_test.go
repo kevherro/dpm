@@ -88,6 +88,31 @@ func TestLinkBinsRefusesDifferentSymlinkConflict(t *testing.T) {
 	assertSymlink(t, linkPath, other)
 }
 
+func TestLinkBinsDoesNotLeavePartialLinksOnConflict(t *testing.T) {
+	cfg := testConfig(t)
+	prefix := filepath.Join(cfg.PkgsDir, "hello", "1.0.0")
+	makeExecutable(t, filepath.Join(prefix, "hello"))
+	makeExecutable(t, filepath.Join(prefix, "goodbye"))
+	other := filepath.Join(cfg.PkgsDir, "other", "1.0.0", "goodbye")
+	makeExecutable(t, other)
+	if err := os.MkdirAll(cfg.BinDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	conflict := filepath.Join(cfg.BinDir, "goodbye")
+	if err := os.Symlink(other, conflict); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	_, err := LinkBins(cfg, prefix, []string{"hello", "goodbye"})
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("LinkBins() error = %v, want ErrConflict", err)
+	}
+	if _, err := os.Lstat(filepath.Join(cfg.BinDir, "hello")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Lstat(hello) error = %v, want not exist", err)
+	}
+	assertSymlink(t, conflict, other)
+}
+
 func TestLinkBinsRejectsUnsafeBins(t *testing.T) {
 	cfg := testConfig(t)
 	prefix := filepath.Join(cfg.PkgsDir, "hello", "1.0.0")

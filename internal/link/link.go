@@ -25,6 +25,11 @@ type BinLink struct {
 	Link   string
 }
 
+type plannedLink struct {
+	link   BinLink
+	create bool
+}
+
 // LinkBins links declared package binaries from prefix into cfg.BinDir.
 func LinkBins(cfg config.Config, prefix string, bins []string) ([]BinLink, error) {
 	prefix, err := cleanPrefix(cfg, prefix)
@@ -42,7 +47,7 @@ func LinkBins(cfg config.Config, prefix string, bins []string) ([]BinLink, error
 	}
 
 	seen := map[string]bool{}
-	links := make([]BinLink, 0, len(bins))
+	planned := make([]plannedLink, 0, len(bins))
 	for _, bin := range bins {
 		link, err := planLink(cfg, prefix, bin)
 		if err != nil {
@@ -52,12 +57,25 @@ func LinkBins(cfg config.Config, prefix string, bins []string) ([]BinLink, error
 			return nil, fmt.Errorf("duplicate bin link name %q", link.Name)
 		}
 		seen[link.Name] = true
-		if err := createLink(link); err != nil {
+		create, err := needsCreate(link)
+		if err != nil {
 			return nil, err
 		}
-		links = append(links, link)
+		planned = append(planned, plannedLink{link: link, create: create})
 	}
 
+	links := make([]BinLink, 0, len(planned))
+	created := make([]BinLink, 0, len(planned))
+	for _, plan := range planned {
+		if plan.create {
+			if err := os.Symlink(plan.link.Source, plan.link.Link); err != nil {
+				_ = RemoveBins(cfg, created)
+				return nil, fmt.Errorf("create bin link %s -> %s: %w", plan.link.Link, plan.link.Source, err)
+			}
+			created = append(created, plan.link)
+		}
+		links = append(links, plan.link)
+	}
 	return links, nil
 }
 
@@ -156,29 +174,26 @@ func validateSource(source string) error {
 	return nil
 }
 
-func createLink(link BinLink) error {
+func needsCreate(link BinLink) (bool, error) {
 	info, err := os.Lstat(link.Link)
 	if err == nil {
 		if info.Mode().Type() != os.ModeSymlink {
-			return fmt.Errorf("%w: %s already exists and is not a symlink", ErrConflict, link.Link)
+			return false, fmt.Errorf("%w: %s already exists and is not a symlink", ErrConflict, link.Link)
 		}
 		target, err := os.Readlink(link.Link)
 		if err != nil {
-			return fmt.Errorf("read existing bin link %s: %w", link.Link, err)
+			return false, fmt.Errorf("read existing bin link %s: %w", link.Link, err)
 		}
 		if target != link.Source {
-			return fmt.Errorf("%w: %s points to %s, not %s", ErrConflict, link.Link, target, link.Source)
+			return false, fmt.Errorf("%w: %s points to %s, not %s", ErrConflict, link.Link, target, link.Source)
 		}
-		return nil
+		return false, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("stat bin link %s: %w", link.Link, err)
-	}
-	if err := os.Symlink(link.Source, link.Link); err != nil {
-		return fmt.Errorf("create bin link %s -> %s: %w", link.Link, link.Source, err)
+		return false, fmt.Errorf("stat bin link %s: %w", link.Link, err)
 	}
 
-	return nil
+	return true, nil
 }
 
 func removeLink(link BinLink) error {
