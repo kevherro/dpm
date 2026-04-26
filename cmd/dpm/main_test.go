@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,7 +16,58 @@ import (
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/link"
 	"github.com/kevherro/dpm/internal/state"
+	"github.com/kevherro/dpm/internal/testutil"
 )
+
+func TestRunHelloEndToEnd(t *testing.T) {
+	cfg := testCLIConfig(t)
+	testutil.WriteHelloRegistry(t, cfg)
+
+	code, stdout, stderr := runCLI(t, []string{"install", "hello"})
+	if code != 0 {
+		t.Fatalf("install code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"installing hello 1.0.0\n",
+		"linked " + filepath.Join(cfg.BinDir, "hello") + "\n",
+		"done\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("install stdout = %q, want substring %q", stdout, want)
+		}
+	}
+
+	hello := exec.CommandContext(context.Background(), filepath.Join(cfg.BinDir, "hello"))
+	helloOutput, err := hello.Output()
+	if err != nil {
+		t.Fatalf("installed hello command error = %v", err)
+	}
+	if string(helloOutput) != testutil.HelloOutput {
+		t.Fatalf("hello output = %q, want %q", helloOutput, testutil.HelloOutput)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"list"})
+	if code != 0 {
+		t.Fatalf("list code = %d, stderr = %q", code, stderr)
+	}
+	if stdout != "hello 1.0.0\n" {
+		t.Fatalf("list stdout = %q, want hello listing", stdout)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"remove", "hello"})
+	if code != 0 {
+		t.Fatalf("remove code = %d, stderr = %q", code, stderr)
+	}
+	if stdout != "removed hello 1.0.0\n" {
+		t.Fatalf("remove stdout = %q, want removal", stdout)
+	}
+	if _, err := os.Lstat(filepath.Join(cfg.BinDir, "hello")); !os.IsNotExist(err) {
+		t.Fatalf("Lstat(hello link) error = %v, want not exist", err)
+	}
+	if _, err := state.New(cfg).Get("hello"); err == nil {
+		t.Fatal("state Get(hello) error = nil, want missing after remove")
+	}
+}
 
 func TestRunList(t *testing.T) {
 	cfg := testCLIConfig(t)

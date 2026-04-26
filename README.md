@@ -35,5 +35,11 @@ dpm doctor
 The registry is currently a local checkout at `~/.dpm/registry` with package
 manifests under `packages/<name>/<version>/dpm.toml`.
 
+End-to-end `hello` demo:
+
+```sh
+go test ./cmd/dpm -run TestRunHelloEndToEnd -v
+```
+
 This project is early and intentionally boring. The first milestone is a small
 end-to-end demo package, backed by real tests.
