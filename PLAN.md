@@ -7,7 +7,7 @@
 - [x] Step 5: Implement checksum verification and deterministic artifact fetch/cache.
 - [x] Step 6: Implement safe `.tar.gz` extraction.
 - [x] Step 7: Implement symlink management.
-- [ ] Step 8: Implement installed package state.
+- [x] Step 8: Implement installed package state.
 - [ ] Step 9: Implement install/remove/list/info/search/update/doctor CLI commands.
 - [ ] Step 10: Add end-to-end `hello` demo fixtures and tests.
 - [ ] Step 11: Run `go fmt ./...`, `go test ./...`, and `go vet ./...`.
