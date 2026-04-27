@@ -44,11 +44,12 @@ func WriteHelloRegistry(t testing.TB, cfg config.Config) HelloFixture {
 	}
 	url := "file://" + artifactPath
 
-	dir := filepath.Join(cfg.RegistryDir, "packages", HelloName, HelloVersion)
+	dir := filepath.Join(cfg.RegistryDir, "packages", HelloName, "versions", HelloVersion)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	manifest := `name = "` + HelloName + `"
+	manifest := `schema = 1
+name = "` + HelloName + `"
 version = "` + HelloVersion + `"
 dependencies = []
 

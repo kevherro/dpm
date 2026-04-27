@@ -238,6 +238,20 @@ license = "MIT OR Unlicense"
 categories = ["search", "cli"]
 ```
 
+Rules:
+
+- `schema` is required and must be integer `1`.
+- `name` is required and must match the package directory name.
+- `name` must be a local path component with no path separators.
+- `summary` is required and must be a quoted string.
+- `homepage` is required and must be a quoted string.
+- `license` is required and must be a quoted string.
+- `categories` is optional and must be a string array when present.
+- Category names must be local path components with no path separators.
+- Sections are not allowed in `package.toml`.
+- Unknown keys are rejected.
+- Duplicate keys are rejected.
+
 Version install manifest:
 
 ```toml
@@ -257,19 +271,90 @@ sha256 = "378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715"
 bins = ["ripgrep-15.1.0-aarch64-apple-darwin/rg"]
 ```
 
+Rules:
+
+- `schema` is required and must be integer `1`.
+- `name` and `version` are required and must match the registry path.
+- `dependencies` is required and must be a string array.
+- Every artifact must declare `os`, `arch`, `url`, and `sha256`.
+- `[install]` must declare explicit `bins`.
+- `yanked` is optional and defaults to `false`.
+- `yank_reason` is optional and must be a quoted string when present.
+- Unknown keys and duplicate keys are rejected.
+- No executable install behavior is allowed.
+
+## Ripgrep Example
+
+The first real registry package should look like this:
+
+```text
+packages/
+  ripgrep/
+    package.toml
+    versions/
+      15.1.0/
+        dpm.toml
+```
+
+`packages/ripgrep/package.toml`:
+
+```toml
+schema = 1
+name = "ripgrep"
+summary = "Recursively search directories for a regex pattern"
+homepage = "https://github.com/BurntSushi/ripgrep"
+license = "MIT OR Unlicense"
+categories = ["search", "cli"]
+```
+
+`packages/ripgrep/versions/15.1.0/dpm.toml`:
+
+```toml
+schema = 1
+name = "ripgrep"
+version = "15.1.0"
+dependencies = []
+yanked = false
+
+[[artifacts]]
+os = "darwin"
+arch = "arm64"
+url = "https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-aarch64-apple-darwin.tar.gz"
+sha256 = "378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715"
+
+[install]
+bins = ["ripgrep-15.1.0-aarch64-apple-darwin/rg"]
+```
+
+## Version Deletion Policy
+
+Published versions should not be deleted from the registry. A deleted version
+breaks reproducibility for anyone with a lockfile, cached state, old commit, or
+support request that refers to that version.
+
+Use yanking instead:
+
+- Set `yanked = true` when a version should not be chosen by default.
+- Add `yank_reason` when the reason is useful for users or maintainers.
+- Keep the original `dpm.toml` path in place.
+- Publish a new version when the artifact or metadata needs replacement.
+
+The registry validator should eventually flag deleted versions by comparing
+against registry history, but the policy is useful before enforcement exists.
+
 ## Milestone 1: Registry Schema
 
 - [x] Define `registry.toml` schema.
-- [ ] Define `package.toml` schema.
-- [ ] Move version manifests to `packages/<name>/versions/<version>/dpm.toml`.
-- [ ] Add `schema = 1` support to manifests.
-- [ ] Add yanking fields: `yanked` and optional `yank_reason`.
-- [ ] Document the `ripgrep` example.
-- [ ] Decide whether deleted versions are forbidden by policy.
+- [x] Define `package.toml` schema.
+- [x] Move version manifests to `packages/<name>/versions/<version>/dpm.toml`.
+- [x] Add `schema = 1` support to manifests.
+- [x] Add yanking fields: `yanked` and optional `yank_reason`.
+- [x] Document the `ripgrep` example.
+- [x] Decide whether deleted versions are forbidden by policy.
 
 ## Milestone 2: Client Registry Compatibility
 
-- [ ] Teach `internal/registry` to read the new `versions/` layout.
+- [x] Teach `internal/registry` to read the new `versions/` layout.
 - [ ] Add package metadata parsing for `package.toml`.
 - [ ] Update version resolution to skip yanked versions by default.
 - [ ] Preserve compatibility with current test fixtures only if cheap.

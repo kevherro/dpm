@@ -258,7 +258,7 @@ func testInstallConfig(t *testing.T) config.Config {
 func writeRegistryManifest(t *testing.T, cfg config.Config, fixture manifestFixture) {
 	t.Helper()
 
-	dir := filepath.Join(cfg.RegistryDir, "packages", fixture.name, fixture.version)
+	dir := filepath.Join(cfg.RegistryDir, "packages", fixture.name, "versions", fixture.version)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
@@ -270,7 +270,8 @@ func writeRegistryManifest(t *testing.T, cfg config.Config, fixture manifestFixt
 		}
 		deps = "[" + strings.Join(parts, ", ") + "]"
 	}
-	contents := `name = "` + fixture.name + `"
+	contents := `schema = 1
+name = "` + fixture.name + `"
 version = "` + fixture.version + `"
 dependencies = ` + deps + `
 

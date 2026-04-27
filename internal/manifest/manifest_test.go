@@ -10,9 +10,12 @@ import (
 
 func TestParseValidManifest(t *testing.T) {
 	got, err := Parse(strings.NewReader(`
+schema = 1
 name = "hello"
 version = "1.0.0"
 dependencies = ["libhello"]
+yanked = true
+yank_reason = "bad artifact"
 
 [[artifacts]]
 os = "darwin"
@@ -28,9 +31,12 @@ bins = ["hello"]
 	}
 
 	want := Manifest{
+		Schema:       CurrentSchema,
 		Name:         "hello",
 		Version:      "1.0.0",
 		Dependencies: []string{"libhello"},
+		Yanked:       true,
+		YankReason:   "bad artifact",
 		Artifacts: []Artifact{
 			{
 				OS:     "darwin",
@@ -50,6 +56,7 @@ bins = ["hello"]
 func TestParseAllowsCommentsAndMultipleArtifacts(t *testing.T) {
 	got, err := Parse(strings.NewReader(`
 # package metadata
+schema = 1
 name = "hello"
 version = "1.0.0"
 dependencies = [] # no deps
@@ -91,8 +98,40 @@ func TestParseRejectsInvalidManifest(t *testing.T) {
 		wantErr string
 	}{
 		{
+			name: "missing schema",
+			input: `
+name = "hello"
+version = "1.0.0"
+[[artifacts]]
+os = "darwin"
+arch = "arm64"
+url = "file://hello.tar.gz"
+sha256 = "abc"
+[install]
+bins = ["hello"]
+`,
+			wantErr: "manifest schema is required",
+		},
+		{
+			name: "unsupported schema",
+			input: `
+schema = 2
+name = "hello"
+version = "1.0.0"
+[[artifacts]]
+os = "darwin"
+arch = "arm64"
+url = "file://hello.tar.gz"
+sha256 = "abc"
+[install]
+bins = ["hello"]
+`,
+			wantErr: "manifest schema 2 is not supported",
+		},
+		{
 			name: "missing name",
 			input: `
+schema = 1
 version = "1.0.0"
 [[artifacts]]
 os = "darwin"
@@ -107,6 +146,7 @@ bins = ["hello"]
 		{
 			name: "missing artifact checksum",
 			input: `
+schema = 1
 name = "hello"
 version = "1.0.0"
 [[artifacts]]
@@ -121,6 +161,7 @@ bins = ["hello"]
 		{
 			name: "missing install bins",
 			input: `
+schema = 1
 name = "hello"
 version = "1.0.0"
 [[artifacts]]
@@ -134,6 +175,7 @@ sha256 = "abc"
 		{
 			name: "unknown section",
 			input: `
+schema = 1
 name = "hello"
 [postinstall]
 run = "echo no"
@@ -143,6 +185,7 @@ run = "echo no"
 		{
 			name: "unknown key",
 			input: `
+schema = 1
 name = "hello"
 version = "1.0.0"
 script = "echo no"
@@ -152,6 +195,7 @@ script = "echo no"
 		{
 			name: "duplicate key",
 			input: `
+schema = 1
 name = "hello"
 name = "hello-again"
 `,
@@ -160,6 +204,7 @@ name = "hello-again"
 		{
 			name: "absolute bin",
 			input: `
+schema = 1
 name = "hello"
 version = "1.0.0"
 [[artifacts]]
@@ -175,6 +220,7 @@ bins = ["/usr/bin/hello"]
 		{
 			name: "traversal bin",
 			input: `
+schema = 1
 name = "hello"
 version = "1.0.0"
 [[artifacts]]
@@ -186,6 +232,24 @@ sha256 = "abc"
 bins = ["../hello"]
 `,
 			wantErr: "must be relative",
+		},
+		{
+			name: "invalid yanked bool",
+			input: `
+schema = 1
+name = "hello"
+version = "1.0.0"
+dependencies = []
+yanked = yes
+[[artifacts]]
+os = "darwin"
+arch = "arm64"
+url = "file://hello.tar.gz"
+sha256 = "abc"
+[install]
+bins = ["hello"]
+`,
+			wantErr: "expected boolean true or false",
 		},
 	}
 
@@ -219,6 +283,16 @@ func TestParseRejectsMalformedValues(t *testing.T) {
 			wantErr: "expected string array",
 		},
 		{
+			name:    "quoted schema",
+			input:   `schema = "1"`,
+			wantErr: "schema must be an integer",
+		},
+		{
+			name:    "non string yank reason",
+			input:   `yank_reason = false`,
+			wantErr: "expected quoted string",
+		},
+		{
 			name:    "unclosed string",
 			input:   `name = "hello`,
 			wantErr: "parse quoted string",
@@ -239,7 +313,11 @@ func TestParseRejectsMalformedValues(t *testing.T) {
 }
 
 func equalManifest(a, b Manifest) bool {
-	if a.Name != b.Name || a.Version != b.Version {
+	if a.Schema != b.Schema ||
+		a.Name != b.Name ||
+		a.Version != b.Version ||
+		a.Yanked != b.Yanked ||
+		a.YankReason != b.YankReason {
 		return false
 	}
 	if !equalStrings(a.Dependencies, b.Dependencies) {

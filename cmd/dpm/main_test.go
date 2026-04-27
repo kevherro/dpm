@@ -209,11 +209,12 @@ func runCLI(t *testing.T, args []string) (int, string, string) {
 func writeCLIManifest(t *testing.T, cfg config.Config, name, version string) {
 	t.Helper()
 
-	dir := filepath.Join(cfg.RegistryDir, "packages", name, version)
+	dir := filepath.Join(cfg.RegistryDir, "packages", name, "versions", version)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	contents := `name = "` + name + `"
+	contents := `schema = 1
+name = "` + name + `"
 version = "` + version + `"
 dependencies = []
 

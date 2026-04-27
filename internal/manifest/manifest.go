@@ -13,11 +13,19 @@ import (
 	"strings"
 )
 
+const (
+	// CurrentSchema is the supported version manifest schema.
+	CurrentSchema = 1
+)
+
 // Manifest is a declarative dpm package manifest.
 type Manifest struct {
+	Schema       int
 	Name         string
 	Version      string
 	Dependencies []string
+	Yanked       bool
+	YankReason   string
 	Artifacts    []Artifact
 	Install      Install
 }
@@ -139,6 +147,12 @@ func Parse(r io.Reader) (Manifest, error) {
 
 // Validate checks required manifest fields and rejects unsafe declarations.
 func Validate(m Manifest) error {
+	if m.Schema == 0 {
+		return fmt.Errorf("manifest schema is required")
+	}
+	if m.Schema != CurrentSchema {
+		return fmt.Errorf("manifest schema %d is not supported", m.Schema)
+	}
 	if m.Name == "" {
 		return fmt.Errorf("manifest name is required")
 	}
@@ -185,6 +199,12 @@ func Validate(m Manifest) error {
 
 func parseRootKey(m *Manifest, key, value string) error {
 	switch key {
+	case "schema":
+		n, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("schema must be an integer: %w", err)
+		}
+		m.Schema = n
 	case "name":
 		s, err := parseString(value)
 		if err != nil {
@@ -203,6 +223,18 @@ func parseRootKey(m *Manifest, key, value string) error {
 			return err
 		}
 		m.Dependencies = values
+	case "yanked":
+		b, err := parseBool(value)
+		if err != nil {
+			return err
+		}
+		m.Yanked = b
+	case "yank_reason":
+		s, err := parseString(value)
+		if err != nil {
+			return err
+		}
+		m.YankReason = s
 	default:
 		return fmt.Errorf("unknown root key %q", key)
 	}
@@ -280,6 +312,17 @@ func parseStringArray(value string) ([]string, error) {
 	}
 
 	return values, nil
+}
+
+func parseBool(value string) (bool, error) {
+	switch value {
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		return false, fmt.Errorf("expected boolean true or false")
+	}
 }
 
 func splitArray(value string) []string {

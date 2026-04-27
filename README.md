@@ -33,7 +33,7 @@ dpm doctor
 ```
 
 The registry is currently a local checkout at `~/.dpm/registry` with package
-manifests under `packages/<name>/<version>/dpm.toml`.
+manifests under `packages/<name>/versions/<version>/dpm.toml`.
 
 End-to-end `hello` demo:
 

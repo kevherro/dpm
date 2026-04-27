@@ -61,6 +61,29 @@ func TestVersionsListsSortedVersions(t *testing.T) {
 	}
 }
 
+func TestVersionsUsesVersionsDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "hello", "1.0.0")
+	reg := newRegistry(t, root)
+
+	got, err := reg.ManifestPath("hello", "1.0.0")
+	if err != nil {
+		t.Fatalf("ManifestPath() error = %v", err)
+	}
+	want := filepath.Join(root, "packages", "hello", "versions", "1.0.0", "dpm.toml")
+	if got != want {
+		t.Fatalf("ManifestPath() = %q, want %q", got, want)
+	}
+
+	versions, err := reg.Versions("hello")
+	if err != nil {
+		t.Fatalf("Versions() error = %v", err)
+	}
+	if !slices.Equal(versions, []string{"1.0.0"}) {
+		t.Fatalf("Versions() = %#v, want 1.0.0", versions)
+	}
+}
+
 func TestSearchFindsPackages(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "hello", "1.0.0")
@@ -183,7 +206,7 @@ func writeManifest(t *testing.T, root, name, version string) {
 func writeManifestContents(t *testing.T, root, name, version, contents string) {
 	t.Helper()
 
-	dir := filepath.Join(root, "packages", name, version)
+	dir := filepath.Join(root, "packages", name, "versions", version)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
@@ -193,7 +216,8 @@ func writeManifestContents(t *testing.T, root, name, version, contents string) {
 }
 
 func validManifest(name, version string) string {
-	return `name = "` + name + `"
+	return `schema = 1
+name = "` + name + `"
 version = "` + version + `"
 dependencies = []
 

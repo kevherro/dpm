@@ -80,12 +80,12 @@ func (r Registry) ResolveVersion(name, version string) (manifest.Manifest, error
 
 // Versions lists available versions for name in ascending order.
 func (r Registry) Versions(name string) ([]string, error) {
-	pkgDir, err := r.PackageDir(name)
+	versionsDir, err := r.VersionsDir(name)
 	if err != nil {
 		return nil, err
 	}
 
-	entries, err := os.ReadDir(pkgDir)
+	entries, err := os.ReadDir(versionsDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, fmt.Errorf("%w: %s", ErrPackageNotFound, name)
@@ -148,6 +148,16 @@ func (r Registry) PackageDir(name string) (string, error) {
 	return filepath.Join(r.Root, "packages", name), nil
 }
 
+// VersionsDir returns the version directory root for name.
+func (r Registry) VersionsDir(name string) (string, error) {
+	pkgDir, err := r.PackageDir(name)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(pkgDir, "versions"), nil
+}
+
 // ManifestPath returns the dpm.toml path for name and version.
 func (r Registry) ManifestPath(name, version string) (string, error) {
 	if err := validatePathPart("package", name); err != nil {
@@ -157,7 +167,7 @@ func (r Registry) ManifestPath(name, version string) (string, error) {
 		return "", err
 	}
 
-	return filepath.Join(r.Root, "packages", name, version, "dpm.toml"), nil
+	return filepath.Join(r.Root, "packages", name, "versions", version, "dpm.toml"), nil
 }
 
 func validatePathPart(kind, value string) error {
