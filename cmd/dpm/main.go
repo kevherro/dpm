@@ -47,7 +47,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	case "info":
 		runErr = runInfo(cfg, args[1:], stdout)
 	case "update":
-		runErr = runUpdate(cfg, args[1:], stdout)
+		runErr = runUpdate(ctx, cfg, args[1:], stdout)
 	case "doctor":
 		runErr = runDoctor(cfg, args[1:], stdout)
 	case "help", "-h", "--help":
@@ -71,7 +71,7 @@ func runInstall(ctx context.Context, cfg config.Config, args []string, stdout io
 	}
 	result, err := install.Install(ctx, cfg, args[0])
 	if err != nil {
-		return err
+		return suggestUpdateForMissingRegistry(cfg, err)
 	}
 	for _, pkg := range result.Packages {
 		if pkg.AlreadyInstalled {
@@ -205,21 +205,40 @@ func formatSearchResult(match registry.SearchResult) string {
 	return match.Name + "\t" + match.Summary + "\t" + strings.Join(match.Categories, ",")
 }
 
-func runUpdate(cfg config.Config, args []string, stdout io.Writer) error {
+func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 0 {
 		return fmt.Errorf("usage: dpm update")
 	}
-	info, err := os.Stat(cfg.RegistryDir)
+	if err := cfg.RequireInsideRoot(cfg.RegistryDir); err != nil {
+		return err
+	}
+	result, err := registry.Update(ctx, registry.UpdateOptions{
+		Root: cfg.RegistryDir,
+		URL:  cfg.RegistryURL,
+	})
 	if err != nil {
-		return fmt.Errorf("registry %s is not available: %w", cfg.RegistryDir, err)
+		return err
 	}
-	if !info.IsDir() {
-		return fmt.Errorf("registry %s is not a directory", cfg.RegistryDir)
-	}
-	fmt.Fprintf(stdout, "registry %s\n", cfg.RegistryDir)
-	fmt.Fprintln(stdout, "local registry updates are manual in v1")
+	fmt.Fprintf(stdout, "%s registry %s\n", result.Action, result.Root)
+	fmt.Fprintf(stdout, "revision %s\n", result.Revision)
 
 	return nil
+}
+
+func suggestUpdateForMissingRegistry(cfg config.Config, err error) error {
+	if !errors.Is(err, registry.ErrPackageNotFound) {
+		return err
+	}
+	if registryHasPackageDir(cfg.RegistryDir) {
+		return err
+	}
+
+	return fmt.Errorf("%w\n\nregistry is missing or empty; run `dpm update` to fetch %s", err, cfg.RegistryURL)
+}
+
+func registryHasPackageDir(registryDir string) bool {
+	info, err := os.Stat(filepath.Join(registryDir, "packages"))
+	return err == nil && info.IsDir()
 }
 
 func runDoctor(cfg config.Config, args []string, stdout io.Writer) error {

@@ -13,6 +13,7 @@ func TestDefaultUsesHomeDPMRoot(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv(EnvRoot, "")
+	t.Setenv(EnvRegistryURL, "")
 
 	cfg, err := Default()
 	if err != nil {
@@ -29,6 +30,7 @@ func TestDefaultUsesHomeDPMRoot(t *testing.T) {
 func TestDefaultUsesDPMRootOverride(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "custom-root")
 	t.Setenv(EnvRoot, root)
+	t.Setenv(EnvRegistryURL, "")
 
 	cfg, err := Default()
 	if err != nil {
@@ -39,6 +41,22 @@ func TestDefaultUsesDPMRootOverride(t *testing.T) {
 		t.Fatalf("Root = %q, want %q", cfg.Root, root)
 	}
 	assertLayout(t, cfg, root)
+}
+
+func TestDefaultUsesRegistryURLOverride(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "custom-root")
+	url := "file:///tmp/dpm-registry"
+	t.Setenv(EnvRoot, root)
+	t.Setenv(EnvRegistryURL, url)
+
+	cfg, err := Default()
+	if err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+
+	if cfg.RegistryURL != url {
+		t.Fatalf("RegistryURL = %q, want %q", cfg.RegistryURL, url)
+	}
 }
 
 func TestFromRootRejectsEmptyRoot(t *testing.T) {
@@ -135,6 +153,7 @@ func assertLayout(t *testing.T, cfg Config, root string) {
 		DownloadsDir: filepath.Join(root, "downloads"),
 		CacheDir:     filepath.Join(root, "cache"),
 		RegistryDir:  filepath.Join(root, "registry"),
+		RegistryURL:  DefaultRegistryURL,
 		StateDir:     filepath.Join(root, "state"),
 	}
 

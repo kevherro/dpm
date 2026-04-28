@@ -172,18 +172,39 @@ func TestRunSearchAndInfoUsePackageMetadata(t *testing.T) {
 	}
 }
 
-func TestRunUpdateChecksLocalRegistry(t *testing.T) {
+func TestRunUpdateClonesLocalGitRegistry(t *testing.T) {
 	cfg := testCLIConfig(t)
-	if err := os.MkdirAll(cfg.RegistryDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll() error = %v", err)
-	}
+	source := newCLIGitRegistry(t)
+	t.Setenv(config.EnvRegistryURL, cliFileURL(source))
 
 	code, stdout, stderr := runCLI(t, []string{"update"})
 	if code != 0 {
 		t.Fatalf("update code = %d, stderr = %q", code, stderr)
 	}
-	if !strings.Contains(stdout, "local registry updates are manual in v1") {
-		t.Fatalf("update stdout = %q, want manual registry message", stdout)
+	if !strings.Contains(stdout, "cloned registry "+cfg.RegistryDir+"\n") ||
+		!strings.Contains(stdout, "revision ") {
+		t.Fatalf("update stdout = %q, want clone result", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.RegistryDir, "registry.toml")); err != nil {
+		t.Fatalf("Stat(registry.toml) error = %v", err)
+	}
+}
+
+func TestRunInstallSuggestsUpdateWhenRegistryMissing(t *testing.T) {
+	testCLIConfig(t)
+
+	code, _, stderr := runCLI(t, []string{"install", "missing"})
+	if code != 1 {
+		t.Fatalf("install code = %d, want 1", code)
+	}
+	for _, want := range []string{
+		"package not found",
+		"run `dpm update`",
+		config.DefaultRegistryURL,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("install stderr = %q, want substring %q", stderr, want)
+		}
 	}
 }
 
@@ -231,6 +252,7 @@ func testCLIConfig(t *testing.T) config.Config {
 
 	root := filepath.Join(t.TempDir(), "dpm-root")
 	t.Setenv(config.EnvRoot, root)
+	t.Setenv(config.EnvRegistryURL, "")
 	cfg, err := config.FromRoot(root)
 	if err != nil {
 		t.Fatalf("FromRoot() error = %v", err)
@@ -294,6 +316,55 @@ license = "` + license + `"
 categories = [` + strings.Join(quotedCategories, ", ") + `]
 `
 	if err := os.WriteFile(filepath.Join(dir, registry.PackageFile), []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func newCLIGitRegistry(t *testing.T) string {
+	t.Helper()
+	requireCLIGit(t)
+
+	root := filepath.Join(t.TempDir(), "source-registry")
+	writeRawFile(t, filepath.Join(root, "registry.toml"), `schema = 1
+name = "dpm-core"
+description = "Test registry"
+`)
+	runGit(t, root, "init")
+	runGit(t, root, "add", ".")
+	runGit(t, root, "-c", "user.name=dpm-test", "-c", "user.email=dpm@example.invalid", "commit", "--no-gpg-sign", "-m", "initial registry")
+
+	return root
+}
+
+func requireCLIGit(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git not available: %v", err)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(context.Background(), "git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s error = %v\n%s", strings.Join(args, " "), err, out)
+	}
+
+	return strings.TrimSpace(string(out))
+}
+
+func cliFileURL(path string) string {
+	return "file://" + filepath.ToSlash(path)
+}
+
+func writeRawFile(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 }

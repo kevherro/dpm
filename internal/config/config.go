@@ -13,6 +13,10 @@ import (
 const (
 	// EnvRoot overrides the default dpm root.
 	EnvRoot = "DPM_ROOT"
+	// EnvRegistryURL overrides the default Git registry URL.
+	EnvRegistryURL = "DPM_REGISTRY_URL"
+	// DefaultRegistryURL is the placeholder Git registry used by dpm update.
+	DefaultRegistryURL = "https://github.com/kevherro/dpm-registry.git"
 )
 
 // Config contains the filesystem paths dpm is allowed to manage.
@@ -23,13 +27,14 @@ type Config struct {
 	DownloadsDir string
 	CacheDir     string
 	RegistryDir  string
+	RegistryURL  string
 	StateDir     string
 }
 
 // Default returns configuration derived from the environment.
 func Default() (Config, error) {
 	if root := os.Getenv(EnvRoot); root != "" {
-		return FromRoot(root)
+		return withRegistryURL(FromRoot(root))
 	}
 
 	home, err := os.UserHomeDir()
@@ -37,7 +42,7 @@ func Default() (Config, error) {
 		return Config{}, fmt.Errorf("find home directory: %w", err)
 	}
 
-	return FromRoot(filepath.Join(home, ".dpm"))
+	return withRegistryURL(FromRoot(filepath.Join(home, ".dpm")))
 }
 
 // FromRoot returns configuration rooted at root.
@@ -59,8 +64,20 @@ func FromRoot(root string) (Config, error) {
 		DownloadsDir: filepath.Join(absRoot, "downloads"),
 		CacheDir:     filepath.Join(absRoot, "cache"),
 		RegistryDir:  filepath.Join(absRoot, "registry"),
+		RegistryURL:  DefaultRegistryURL,
 		StateDir:     filepath.Join(absRoot, "state"),
 	}, nil
+}
+
+func withRegistryURL(cfg Config, err error) (Config, error) {
+	if err != nil {
+		return Config{}, err
+	}
+	if url := os.Getenv(EnvRegistryURL); url != "" {
+		cfg.RegistryURL = url
+	}
+
+	return cfg, nil
 }
 
 // EnsureDirs creates the standard dpm directory layout.

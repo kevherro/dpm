@@ -376,15 +376,15 @@ Exact-version parsing design:
 
 ## Milestone 3: Git-Backed `dpm update`
 
-- [ ] Add `DPM_REGISTRY_URL`.
-- [ ] Pick a default registry URL placeholder.
-- [ ] Clone registry when `~/.dpm/registry` is missing.
-- [ ] Pull with `git -C ~/.dpm/registry pull --ff-only` when present.
-- [ ] Reject non-git registry directories.
-- [ ] Reject dirty registry checkout with a useful error.
-- [ ] Support local registry URLs, including `file:///...`, for tests.
-- [ ] Make install errors suggest `dpm update` when registry is missing.
-- [ ] Add focused update tests using a temporary local Git repo.
+- [x] Add `DPM_REGISTRY_URL`.
+- [x] Pick a default registry URL placeholder.
+- [x] Clone registry when `~/.dpm/registry` is missing.
+- [x] Pull with `git -C ~/.dpm/registry pull --ff-only` when present.
+- [x] Reject non-git registry directories.
+- [x] Reject dirty registry checkout with a useful error.
+- [x] Support local registry URLs, including `file:///...`, for tests.
+- [x] Make install errors suggest `dpm update` when registry is missing.
+- [x] Add focused update tests using a temporary local Git repo.
 
 ## Milestone 4: Registry Validation
 
@@ -444,6 +444,15 @@ Exact-version parsing design:
 - [ ] Verify snapshot signatures in `dpm update`.
 - [ ] Prevent rollback using stored snapshot version/checkpoint state.
 - [ ] Add key rotation story before relying on signatures.
+
+## Milestone 10: Performance And Benchmarks
+
+- [ ] Add focused benchmarks for manifest parsing.
+- [ ] Add registry search benchmarks over synthetic package sets.
+- [ ] Add version-resolution benchmarks with yanked and non-yanked versions.
+- [ ] Add install-path benchmarks around link planning and state writes.
+- [ ] Add a fixture generator for benchmark registries.
+- [ ] Track benchmark commands in `test.sh` or a separate `bench.sh`.
 
 ## Failure Points To Watch
 
