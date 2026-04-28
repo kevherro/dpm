@@ -70,5 +70,14 @@ The local registry can be checked before installing:
 go run ./cmd/dpm registry validate --verify-artifacts /Users/kevin/Development/oss/dpm-registry
 ```
 
+Troubleshooting:
+
+- Checksum mismatch: dpm refuses to install when a downloaded artifact does not
+  match the registry manifest. Run `dpm update` and try again. If it still
+  fails, the registry entry or upstream artifact needs maintainer review.
+- Link conflict: dpm will not overwrite unrelated files in `~/.dpm/bin`. Remove
+  or rename the conflicting file, or run `dpm remove <name>` if the link belongs
+  to an installed dpm package.
+
 This project is early and intentionally boring. The first milestone is a small
 end-to-end demo package, backed by real tests.

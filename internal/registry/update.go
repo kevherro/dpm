@@ -116,6 +116,19 @@ func cleanUpdateRoot(root string) (string, error) {
 	return filepath.Clean(abs), nil
 }
 
+// Revision returns the current short Git revision for a registry checkout.
+func Revision(ctx context.Context, root string) (string, error) {
+	root, err := cleanUpdateRoot(root)
+	if err != nil {
+		return "", err
+	}
+	if err := requireGitCheckout(ctx, root); err != nil {
+		return "", err
+	}
+
+	return registryRevision(ctx, root)
+}
+
 func requireGitCheckout(ctx context.Context, root string) error {
 	top, err := runGit(ctx, root, "rev-parse", "--show-toplevel")
 	if err != nil {

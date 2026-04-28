@@ -411,12 +411,17 @@ Exact-version parsing design:
 
 ## Milestone 6: User Experience
 
-- [ ] Improve missing-registry errors to suggest `dpm update`.
-- [ ] Improve stale-registry errors when a package is not found.
-- [ ] Make `dpm doctor` report registry URL, registry path, and current commit.
-- [ ] Add README troubleshooting for checksum mismatch.
-- [ ] Add README troubleshooting for link conflicts.
-- [ ] Consider auto-running `dpm update` only after explicit user opt-in.
+- [x] Improve missing-registry errors to suggest `dpm update`.
+- [x] Improve stale-registry errors when a package is not found.
+- [x] Make `dpm doctor` report registry URL, registry path, and current commit.
+- [x] Add README troubleshooting for checksum mismatch.
+- [x] Add README troubleshooting for link conflicts.
+- [x] Consider auto-running `dpm update` only after explicit user opt-in.
+
+Auto-update decision: do not run `dpm update` implicitly in v1. Missing or stale
+registry errors should suggest the explicit command. A future opt-in flag or
+config setting can add auto-update without making installs unexpectedly touch
+the network by default.
 
 ## Milestone 7: Package Maintenance Tooling
 

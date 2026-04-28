@@ -209,6 +209,26 @@ func TestRunInstallSuggestsUpdateWhenRegistryMissing(t *testing.T) {
 	}
 }
 
+func TestRunInstallSuggestsUpdateWhenPackageMissingFromRegistry(t *testing.T) {
+	cfg := testCLIConfig(t)
+	writeCLIRegistryMetadata(t, cfg)
+	writeCLIPackageMetadata(t, cfg, "hello", "Hello", "https://example.com/hello", "MIT", []string{"demo"})
+
+	code, _, stderr := runCLI(t, []string{"install", "missing"})
+	if code != 1 {
+		t.Fatalf("install code = %d, want 1", code)
+	}
+	for _, want := range []string{
+		`package "missing" was not found in the current registry`,
+		"run `dpm update`",
+		config.DefaultRegistryURL,
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("install stderr = %q, want substring %q", stderr, want)
+		}
+	}
+}
+
 func TestRunRegistryValidate(t *testing.T) {
 	cfg := testCLIConfig(t)
 	writeCLIRegistryMetadata(t, cfg)
@@ -278,8 +298,49 @@ func TestRunDoctor(t *testing.T) {
 	if !strings.Contains(stdout, "ok "+cfg.Root) {
 		t.Fatalf("doctor stdout = %q, want root ok", stdout)
 	}
+	for _, want := range []string{
+		"registry url " + config.DefaultRegistryURL + "\n",
+		"registry path " + cfg.RegistryDir + "\n",
+		"registry revision unavailable:",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", stdout, want)
+		}
+	}
 	if strings.Contains(stdout, "path missing") {
 		t.Fatalf("doctor stdout = %q, did not expect path warning", stdout)
+	}
+}
+
+func TestRunDoctorReportsRegistryRevision(t *testing.T) {
+	cfg := testCLIConfig(t)
+	source := newCLIGitRegistry(t)
+	t.Setenv(config.EnvRegistryURL, cliFileURL(source))
+
+	code, _, stderr := runCLI(t, []string{"update"})
+	if code != 0 {
+		t.Fatalf("update code = %d, stderr = %q", code, stderr)
+	}
+	if err := cfg.EnsureDirs(); err != nil {
+		t.Fatalf("EnsureDirs() error = %v", err)
+	}
+	t.Setenv("PATH", cfg.BinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	code, stdout, stderr := runCLI(t, []string{"doctor"})
+	if code != 0 {
+		t.Fatalf("doctor code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"registry url " + cliFileURL(source) + "\n",
+		"registry path " + cfg.RegistryDir + "\n",
+		"registry revision ",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("doctor stdout = %q, want substring %q", stdout, want)
+		}
+	}
+	if strings.Contains(stdout, "registry revision unavailable") {
+		t.Fatalf("doctor stdout = %q, did not expect unavailable revision", stdout)
 	}
 }
 

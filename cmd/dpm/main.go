@@ -49,7 +49,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	case "update":
 		runErr = runUpdate(ctx, cfg, args[1:], stdout)
 	case "doctor":
-		runErr = runDoctor(cfg, args[1:], stdout)
+		runErr = runDoctor(ctx, cfg, args[1:], stdout)
 	case "registry":
 		runErr = runRegistry(ctx, cfg, args[1:], stdout)
 	case "help", "-h", "--help":
@@ -73,7 +73,7 @@ func runInstall(ctx context.Context, cfg config.Config, args []string, stdout io
 	}
 	result, err := install.Install(ctx, cfg, args[0])
 	if err != nil {
-		return suggestUpdateForMissingRegistry(cfg, err)
+		return suggestUpdateForRegistryMiss(cfg, args[0], err)
 	}
 	for _, pkg := range result.Packages {
 		if pkg.AlreadyInstalled {
@@ -227,15 +227,15 @@ func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.
 	return nil
 }
 
-func suggestUpdateForMissingRegistry(cfg config.Config, err error) error {
+func suggestUpdateForRegistryMiss(cfg config.Config, name string, err error) error {
 	if !errors.Is(err, registry.ErrPackageNotFound) {
 		return err
 	}
-	if registryHasPackageDir(cfg.RegistryDir) {
-		return err
+	if !registryHasPackageDir(cfg.RegistryDir) {
+		return fmt.Errorf("%w\n\nregistry is missing or empty; run `dpm update` to fetch %s", err, cfg.RegistryURL)
 	}
 
-	return fmt.Errorf("%w\n\nregistry is missing or empty; run `dpm update` to fetch %s", err, cfg.RegistryURL)
+	return fmt.Errorf("%w\n\npackage %q was not found in the current registry; run `dpm update` to refresh %s", err, name, cfg.RegistryURL)
 }
 
 func registryHasPackageDir(registryDir string) bool {
@@ -243,7 +243,7 @@ func registryHasPackageDir(registryDir string) bool {
 	return err == nil && info.IsDir()
 }
 
-func runDoctor(cfg config.Config, args []string, stdout io.Writer) error {
+func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 0 {
 		return fmt.Errorf("usage: dpm doctor")
 	}
@@ -275,6 +275,14 @@ func runDoctor(cfg config.Config, args []string, stdout io.Writer) error {
 
 	if !pathContains(cfg.BinDir) {
 		fmt.Fprintf(stdout, "path missing %s\n", cfg.BinDir)
+	}
+	fmt.Fprintf(stdout, "registry url %s\n", cfg.RegistryURL)
+	fmt.Fprintf(stdout, "registry path %s\n", cfg.RegistryDir)
+	rev, err := registry.Revision(ctx, cfg.RegistryDir)
+	if err != nil {
+		fmt.Fprintf(stdout, "registry revision unavailable: %v\n", err)
+	} else {
+		fmt.Fprintf(stdout, "registry revision %s\n", rev)
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("doctor found %d filesystem issue(s)", len(missing))
