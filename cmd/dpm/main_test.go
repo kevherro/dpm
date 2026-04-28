@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kevherro/dpm/internal/checksum"
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/link"
 	"github.com/kevherro/dpm/internal/registry"
@@ -208,6 +209,61 @@ func TestRunInstallSuggestsUpdateWhenRegistryMissing(t *testing.T) {
 	}
 }
 
+func TestRunRegistryValidate(t *testing.T) {
+	cfg := testCLIConfig(t)
+	writeCLIRegistryMetadata(t, cfg)
+	writeCLIPackageMetadata(t, cfg, "hello", "Hello", "https://example.com/hello", "MIT", []string{"demo"})
+	writeCLIManifest(t, cfg, "hello", "1.0.0")
+
+	code, stdout, stderr := runCLI(t, []string{"registry", "validate", cfg.RegistryDir})
+	if code != 0 {
+		t.Fatalf("registry validate code = %d, stderr = %q", code, stderr)
+	}
+	if stdout != "registry valid "+cfg.RegistryDir+"\n" {
+		t.Fatalf("registry validate stdout = %q, want valid", stdout)
+	}
+}
+
+func TestRunRegistryValidateReportsIssues(t *testing.T) {
+	cfg := testCLIConfig(t)
+	writeCLIPackageMetadata(t, cfg, "hello", "Hello", "https://example.com/hello", "MIT", []string{"demo"})
+	writeCLIManifest(t, cfg, "hello", "1.0.0")
+
+	code, stdout, stderr := runCLI(t, []string{"registry", "validate", cfg.RegistryDir})
+	if code != 1 {
+		t.Fatalf("registry validate code = %d, want 1", code)
+	}
+	if !strings.Contains(stdout, "error registry.toml:") {
+		t.Fatalf("registry validate stdout = %q, want registry.toml issue", stdout)
+	}
+	if !strings.Contains(stderr, "registry validation failed") {
+		t.Fatalf("registry validate stderr = %q, want validation failure", stderr)
+	}
+}
+
+func TestRunRegistryValidateVerifiesArtifacts(t *testing.T) {
+	cfg := testCLIConfig(t)
+	writeCLIRegistryMetadata(t, cfg)
+	writeCLIPackageMetadata(t, cfg, "hello", "Hello", "https://example.com/hello", "MIT", []string{"demo"})
+	artifact := filepath.Join(t.TempDir(), "hello.txt")
+	if err := os.WriteFile(artifact, []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	sum, err := checksum.FileSHA256(artifact)
+	if err != nil {
+		t.Fatalf("FileSHA256() error = %v", err)
+	}
+	writeCLIManifestWithArtifact(t, cfg, "hello", "1.0.0", "file://"+filepath.ToSlash(artifact), sum)
+
+	code, stdout, stderr := runCLI(t, []string{"registry", "validate", "--verify-artifacts", cfg.RegistryDir})
+	if code != 0 {
+		t.Fatalf("registry validate code = %d, stderr = %q", code, stderr)
+	}
+	if stdout != "registry valid "+cfg.RegistryDir+"\n" {
+		t.Fatalf("registry validate stdout = %q, want valid", stdout)
+	}
+}
+
 func TestRunDoctor(t *testing.T) {
 	cfg := testCLIConfig(t)
 	if err := cfg.EnsureDirs(); err != nil {
@@ -273,6 +329,11 @@ func runCLI(t *testing.T, args []string) (int, string, string) {
 
 func writeCLIManifest(t *testing.T, cfg config.Config, name, version string) {
 	t.Helper()
+	writeCLIManifestWithArtifact(t, cfg, name, version, "file://"+name+".tar.gz", strings.Repeat("a", 64))
+}
+
+func writeCLIManifestWithArtifact(t *testing.T, cfg config.Config, name, version, url, sha256 string) {
+	t.Helper()
 
 	dir := filepath.Join(cfg.RegistryDir, "packages", name, "versions", version)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -286,13 +347,27 @@ dependencies = []
 [[artifacts]]
 os = "darwin"
 arch = "arm64"
-url = "file://` + name + `.tar.gz"
-sha256 = "` + strings.Repeat("a", 64) + `"
+url = "` + url + `"
+sha256 = "` + sha256 + `"
 
 [install]
 bins = ["` + name + `"]
 `
 	if err := os.WriteFile(filepath.Join(dir, "dpm.toml"), []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func writeCLIRegistryMetadata(t *testing.T, cfg config.Config) {
+	t.Helper()
+	contents := `schema = 1
+name = "dpm-core"
+description = "Test registry"
+`
+	if err := os.MkdirAll(cfg.RegistryDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.RegistryDir, registry.MetadataFile), []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 }

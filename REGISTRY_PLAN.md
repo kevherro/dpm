@@ -388,16 +388,16 @@ Exact-version parsing design:
 
 ## Milestone 4: Registry Validation
 
-- [ ] Add `dpm registry validate <path>` or `dpm doctor --registry`.
-- [ ] Validate `registry.toml`.
-- [ ] Validate package directory names match `package.toml`.
-- [ ] Validate version directory names match `dpm.toml`.
-- [ ] Validate package names, versions, dependencies, artifacts, and bins.
-- [ ] Reject mutable URLs such as `latest` and branch archives.
-- [ ] Ensure every package version has a `darwin/arm64` artifact for v1.
-- [ ] Ensure dependencies resolve inside the registry.
-- [ ] Ensure yanked versions include useful reasons when applicable.
-- [ ] Add optional artifact verification mode that downloads and checks hashes.
+- [x] Add `dpm registry validate <path>` or `dpm doctor --registry`.
+- [x] Validate `registry.toml`.
+- [x] Validate package directory names match `package.toml`.
+- [x] Validate version directory names match `dpm.toml`.
+- [x] Validate package names, versions, dependencies, artifacts, and bins.
+- [x] Reject mutable URLs such as `latest` and branch archives.
+- [x] Ensure every package version has a `darwin/arm64` artifact for v1.
+- [x] Ensure dependencies resolve inside the registry.
+- [x] Ensure yanked versions include useful reasons when applicable.
+- [x] Add optional artifact verification mode that downloads and checks hashes.
 
 ## Milestone 5: First Real Registry
 

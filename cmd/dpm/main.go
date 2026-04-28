@@ -50,6 +50,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		runErr = runUpdate(ctx, cfg, args[1:], stdout)
 	case "doctor":
 		runErr = runDoctor(cfg, args[1:], stdout)
+	case "registry":
+		runErr = runRegistry(ctx, cfg, args[1:], stdout)
 	case "help", "-h", "--help":
 		printUsage(stdout)
 		return 0
@@ -281,6 +283,54 @@ func runDoctor(cfg config.Config, args []string, stdout io.Writer) error {
 	return nil
 }
 
+func runRegistry(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: dpm registry validate [--verify-artifacts] <path>")
+	}
+	switch args[0] {
+	case "validate":
+		return runRegistryValidate(ctx, cfg, args[1:], stdout)
+	default:
+		return fmt.Errorf("usage: dpm registry validate [--verify-artifacts] <path>")
+	}
+}
+
+func runRegistryValidate(ctx context.Context, _ config.Config, args []string, stdout io.Writer) error {
+	verifyArtifacts := false
+	var path string
+	for _, arg := range args {
+		switch arg {
+		case "--verify-artifacts":
+			verifyArtifacts = true
+		default:
+			if path != "" {
+				return fmt.Errorf("usage: dpm registry validate [--verify-artifacts] <path>")
+			}
+			path = arg
+		}
+	}
+	if path == "" {
+		return fmt.Errorf("usage: dpm registry validate [--verify-artifacts] <path>")
+	}
+
+	report, err := registry.Validate(ctx, registry.ValidateOptions{
+		Root:            path,
+		VerifyArtifacts: verifyArtifacts,
+	})
+	if err != nil {
+		return err
+	}
+	if report.Valid() {
+		fmt.Fprintf(stdout, "registry valid %s\n", report.Root)
+		return nil
+	}
+	for _, issue := range report.Issues {
+		fmt.Fprintf(stdout, "error %s: %s\n", issue.Path, issue.Message)
+	}
+
+	return fmt.Errorf("registry validation failed with %d issue(s)", len(report.Issues))
+}
+
 func pathContains(dir string) bool {
 	for _, entry := range filepath.SplitList(os.Getenv("PATH")) {
 		if entry == dir {
@@ -293,7 +343,7 @@ func pathContains(dir string) bool {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: dpm <command> [args]")
-	fmt.Fprintln(w, "commands: install, remove, list, search, info, update, doctor")
+	fmt.Fprintln(w, "commands: install, remove, list, search, info, update, doctor, registry")
 }
 
 func printError(w io.Writer, err error) {

@@ -30,6 +30,7 @@ dpm search <query>
 dpm info <name>
 dpm update
 dpm doctor
+dpm registry validate [--verify-artifacts] <path>
 ```
 
 The registry is currently a local checkout at `~/.dpm/registry` with package
@@ -42,6 +43,8 @@ while developing.
 
 `dpm search` matches package names, summaries, homepages, and categories.
 `dpm info` shows package metadata plus the selected non-yanked version.
+`dpm registry validate` checks registry structure and can optionally verify
+artifact checksums.
 
 End-to-end `hello` demo:
 
