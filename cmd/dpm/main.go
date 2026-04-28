@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -127,8 +128,8 @@ func runSearch(cfg config.Config, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	for _, name := range matches {
-		fmt.Fprintln(stdout, name)
+	for _, match := range matches {
+		fmt.Fprintln(stdout, formatSearchResult(match))
 	}
 
 	return nil
@@ -142,17 +143,35 @@ func runInfo(cfg config.Config, args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	pkg, err := optionalPackage(reg, args[0])
+	if err != nil {
+		return err
+	}
 	m, err := reg.Resolve(args[0])
 	if err != nil {
 		return err
 	}
 
 	fmt.Fprintf(stdout, "name %s\n", m.Name)
+	if pkg.Name != "" {
+		fmt.Fprintf(stdout, "summary %s\n", pkg.Summary)
+		fmt.Fprintf(stdout, "homepage %s\n", pkg.Homepage)
+		fmt.Fprintf(stdout, "license %s\n", pkg.License)
+		if len(pkg.Categories) > 0 {
+			fmt.Fprintf(stdout, "categories %s\n", strings.Join(pkg.Categories, " "))
+		} else {
+			fmt.Fprintln(stdout, "categories")
+		}
+	}
 	fmt.Fprintf(stdout, "version %s\n", m.Version)
 	if len(m.Dependencies) > 0 {
 		fmt.Fprintf(stdout, "dependencies %s\n", strings.Join(m.Dependencies, " "))
 	} else {
 		fmt.Fprintln(stdout, "dependencies")
+	}
+	fmt.Fprintf(stdout, "yanked %t\n", m.Yanked)
+	if m.YankReason != "" {
+		fmt.Fprintf(stdout, "yank_reason %s\n", m.YankReason)
 	}
 	for _, artifact := range m.Artifacts {
 		fmt.Fprintf(stdout, "artifact %s/%s %s\n", artifact.OS, artifact.Arch, artifact.URL)
@@ -160,6 +179,30 @@ func runInfo(cfg config.Config, args []string, stdout io.Writer) error {
 	fmt.Fprintf(stdout, "bins %s\n", strings.Join(m.Install.Bins, " "))
 
 	return nil
+}
+
+func optionalPackage(reg registry.Registry, name string) (registry.Package, error) {
+	pkg, err := reg.Package(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return registry.Package{}, nil
+		}
+
+		return registry.Package{}, err
+	}
+
+	return pkg, nil
+}
+
+func formatSearchResult(match registry.SearchResult) string {
+	if match.Summary == "" {
+		return match.Name
+	}
+	if len(match.Categories) == 0 {
+		return match.Name + "\t" + match.Summary
+	}
+
+	return match.Name + "\t" + match.Summary + "\t" + strings.Join(match.Categories, ",")
 }
 
 func runUpdate(cfg config.Config, args []string, stdout io.Writer) error {

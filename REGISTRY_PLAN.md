@@ -355,12 +355,24 @@ against registry history, but the policy is useful before enforcement exists.
 ## Milestone 2: Client Registry Compatibility
 
 - [x] Teach `internal/registry` to read the new `versions/` layout.
-- [ ] Add package metadata parsing for `package.toml`.
-- [ ] Update version resolution to skip yanked versions by default.
-- [ ] Preserve compatibility with current test fixtures only if cheap.
-- [ ] Update `dpm search` to use name, summary, homepage, and categories.
-- [ ] Update `dpm info` to show package metadata plus selected version data.
-- [ ] Add exact-version parsing design for later `name@version` support.
+- [x] Add package metadata parsing for `package.toml`.
+- [x] Update version resolution to skip yanked versions by default.
+- [x] Preserve compatibility with current test fixtures only if cheap.
+- [x] Update `dpm search` to use name, summary, homepage, and categories.
+- [x] Update `dpm info` to show package metadata plus selected version data.
+- [x] Add exact-version parsing design for later `name@version` support.
+
+Exact-version parsing design:
+
+- A package spec is either `<name>` or `<name>@<version>`.
+- `<name>` resolves to the newest non-yanked version.
+- `<name>@<version>` resolves exactly that version with `ResolveVersion`.
+- Empty names, empty versions, extra `@`, and path separators are invalid.
+- Reserve `@` out of package names before enabling this syntax.
+- Exact CLI installs should still reject yanked versions by default and include
+  `yank_reason` in the error when present.
+- Future lockfile restore can explicitly allow yanked exact versions for
+  reproducibility, because a lockfile represents an existing prior resolution.
 
 ## Milestone 3: Git-Backed `dpm update`
 

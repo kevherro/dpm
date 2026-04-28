@@ -150,6 +150,35 @@ func TestInstallRejectsDifferentInstalledVersion(t *testing.T) {
 	}
 }
 
+func TestInstallSkipsYankedNewestVersion(t *testing.T) {
+	cfg := testInstallConfig(t)
+	oldArtifact, oldSHA := makePackageArtifact(t, "hello")
+	writeRegistryManifest(t, cfg, manifestFixture{
+		name:    "hello",
+		version: "1.0.0",
+		url:     "file://" + oldArtifact,
+		sha256:  oldSHA,
+	})
+	newArtifact, newSHA := makePackageArtifact(t, "hello")
+	writeRegistryManifest(t, cfg, manifestFixture{
+		name:       "hello",
+		version:    "2.0.0",
+		url:        "file://" + newArtifact,
+		sha256:     newSHA,
+		yanked:     true,
+		yankReason: "bad artifact",
+	})
+
+	result, err := (Installer{GOOS: "darwin", GOARCH: "arm64"}).Install(context.Background(), cfg, "hello")
+	if err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+
+	if len(result.Packages) != 1 || result.Packages[0].Version != "1.0.0" {
+		t.Fatalf("Install() = %#v, want non-yanked 1.0.0", result)
+	}
+}
+
 func TestInstallRejectsDependencyCycle(t *testing.T) {
 	cfg := testInstallConfig(t)
 	helloArtifact, helloSHA := makePackageArtifact(t, "hello")
@@ -242,6 +271,8 @@ type manifestFixture struct {
 	dependencies []string
 	url          string
 	sha256       string
+	yanked       bool
+	yankReason   string
 }
 
 func testInstallConfig(t *testing.T) config.Config {
@@ -274,6 +305,7 @@ func writeRegistryManifest(t *testing.T, cfg config.Config, fixture manifestFixt
 name = "` + fixture.name + `"
 version = "` + fixture.version + `"
 dependencies = ` + deps + `
+` + yankedManifestFields(fixture) + `
 
 [[artifacts]]
 os = "darwin"
@@ -287,6 +319,18 @@ bins = ["bin/` + fixture.name + `"]
 	if err := os.WriteFile(filepath.Join(dir, "dpm.toml"), []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+func yankedManifestFields(fixture manifestFixture) string {
+	if !fixture.yanked {
+		return ""
+	}
+	fields := "yanked = true\n"
+	if fixture.yankReason != "" {
+		fields += `yank_reason = "` + fixture.yankReason + `"` + "\n"
+	}
+
+	return fields
 }
 
 func makePackageArtifact(t *testing.T, name string) (string, string) {

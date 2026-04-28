@@ -44,6 +44,33 @@ func TestResolveChoosesNewestVersion(t *testing.T) {
 	}
 }
 
+func TestResolveSkipsYankedVersions(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "hello", "1.0.0")
+	writeManifestContents(t, root, "hello", "2.0.0", yankedManifest("hello", "2.0.0"))
+	reg := newRegistry(t, root)
+
+	got, err := reg.Resolve("hello")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+
+	if got.Version != "1.0.0" {
+		t.Fatalf("Version = %q, want newest non-yanked 1.0.0", got.Version)
+	}
+}
+
+func TestResolveRejectsAllYankedVersions(t *testing.T) {
+	root := t.TempDir()
+	writeManifestContents(t, root, "hello", "1.0.0", yankedManifest("hello", "1.0.0"))
+	reg := newRegistry(t, root)
+
+	_, err := reg.Resolve("hello")
+	if !errors.Is(err, ErrVersionNotFound) {
+		t.Fatalf("Resolve() error = %v, want ErrVersionNotFound", err)
+	}
+}
+
 func TestVersionsListsSortedVersions(t *testing.T) {
 	root := t.TempDir()
 	writeManifest(t, root, "hello", "1.0.0")
@@ -96,8 +123,52 @@ func TestSearchFindsPackages(t *testing.T) {
 		t.Fatalf("Search() error = %v", err)
 	}
 	want := []string{"hello", "help"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("Search() = %#v, want %#v", got, want)
+	if !slices.Equal(searchNames(got), want) {
+		t.Fatalf("Search() = %#v, want names %#v", got, want)
+	}
+}
+
+func TestSearchFindsPackageMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, "ripgrep", "15.1.0")
+	writePackageMetadata(t, root, "ripgrep", `schema = 1
+name = "ripgrep"
+summary = "Recursively search directories for a regex pattern"
+homepage = "https://github.com/BurntSushi/ripgrep"
+license = "MIT OR Unlicense"
+categories = ["search", "terminal"]
+`)
+	writeManifest(t, root, "fd", "10.0.0")
+	writePackageMetadata(t, root, "fd", `schema = 1
+name = "fd"
+summary = "Find filesystem entries"
+homepage = "https://github.com/sharkdp/fd"
+license = "MIT OR Apache-2.0"
+categories = ["filesystem"]
+`)
+	reg := newRegistry(t, root)
+
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{query: "regex", want: []string{"ripgrep"}},
+		{query: "BurntSushi", want: []string{"ripgrep"}},
+		{query: "terminal", want: []string{"ripgrep"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			got, err := reg.Search(tt.query)
+			if err != nil {
+				t.Fatalf("Search() error = %v", err)
+			}
+			if !slices.Equal(searchNames(got), tt.want) {
+				t.Fatalf("Search() = %#v, want names %#v", got, tt.want)
+			}
+			if got[0].Summary == "" || got[0].Homepage == "" || len(got[0].Categories) == 0 {
+				t.Fatalf("Search() result = %#v, want metadata", got[0])
+			}
+		})
 	}
 }
 
@@ -230,4 +301,17 @@ sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 [install]
 bins = ["hello"]
 `
+}
+
+func yankedManifest(name, version string) string {
+	return strings.Replace(validManifest(name, version), "dependencies = []\n", "dependencies = []\nyanked = true\nyank_reason = \"bad artifact\"\n", 1)
+}
+
+func searchNames(results []SearchResult) []string {
+	names := make([]string, 0, len(results))
+	for _, result := range results {
+		names = append(names, result.Name)
+	}
+
+	return names
 }

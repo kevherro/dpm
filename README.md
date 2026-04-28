@@ -33,7 +33,11 @@ dpm doctor
 ```
 
 The registry is currently a local checkout at `~/.dpm/registry` with package
-manifests under `packages/<name>/versions/<version>/dpm.toml`.
+metadata under `packages/<name>/package.toml` and version manifests under
+`packages/<name>/versions/<version>/dpm.toml`.
+
+`dpm search` matches package names, summaries, homepages, and categories.
+`dpm info` shows package metadata plus the selected non-yanked version.
 
 End-to-end `hello` demo:
 

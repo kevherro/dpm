@@ -15,6 +15,7 @@ import (
 
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/link"
+	"github.com/kevherro/dpm/internal/registry"
 	"github.com/kevherro/dpm/internal/state"
 	"github.com/kevherro/dpm/internal/testutil"
 )
@@ -129,6 +130,48 @@ func TestRunSearchAndInfo(t *testing.T) {
 	}
 }
 
+func TestRunSearchAndInfoUsePackageMetadata(t *testing.T) {
+	cfg := testCLIConfig(t)
+	writeCLIManifest(t, cfg, "ripgrep", "15.1.0")
+	writeCLIPackageMetadata(t, cfg, "ripgrep", "Recursively search directories for a regex pattern", "https://github.com/BurntSushi/ripgrep", "MIT OR Unlicense", []string{"search", "cli"})
+
+	code, stdout, stderr := runCLI(t, []string{"search", "regex"})
+	if code != 0 {
+		t.Fatalf("search code = %d, stderr = %q", code, stderr)
+	}
+	if stdout != "ripgrep\tRecursively search directories for a regex pattern\tsearch,cli\n" {
+		t.Fatalf("search stdout = %q, want ripgrep metadata", stdout)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"search", "BurntSushi"})
+	if code != 0 {
+		t.Fatalf("homepage search code = %d, stderr = %q", code, stderr)
+	}
+	if !strings.Contains(stdout, "ripgrep\t") {
+		t.Fatalf("homepage search stdout = %q, want ripgrep", stdout)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"info", "ripgrep"})
+	if code != 0 {
+		t.Fatalf("info code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"name ripgrep\n",
+		"summary Recursively search directories for a regex pattern\n",
+		"homepage https://github.com/BurntSushi/ripgrep\n",
+		"license MIT OR Unlicense\n",
+		"categories search cli\n",
+		"version 15.1.0\n",
+		"yanked false\n",
+		"artifact darwin/arm64 file://ripgrep.tar.gz\n",
+		"bins ripgrep\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("info stdout = %q, want substring %q", stdout, want)
+		}
+	}
+}
+
 func TestRunUpdateChecksLocalRegistry(t *testing.T) {
 	cfg := testCLIConfig(t)
 	if err := os.MkdirAll(cfg.RegistryDir, 0o755); err != nil {
@@ -228,6 +271,29 @@ sha256 = "` + strings.Repeat("a", 64) + `"
 bins = ["` + name + `"]
 `
 	if err := os.WriteFile(filepath.Join(dir, "dpm.toml"), []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func writeCLIPackageMetadata(t *testing.T, cfg config.Config, name, summary, homepage, license string, categories []string) {
+	t.Helper()
+
+	dir := filepath.Join(cfg.RegistryDir, "packages", name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	quotedCategories := make([]string, 0, len(categories))
+	for _, category := range categories {
+		quotedCategories = append(quotedCategories, `"`+category+`"`)
+	}
+	contents := `schema = 1
+name = "` + name + `"
+summary = "` + summary + `"
+homepage = "` + homepage + `"
+license = "` + license + `"
+categories = [` + strings.Join(quotedCategories, ", ") + `]
+`
+	if err := os.WriteFile(filepath.Join(dir, registry.PackageFile), []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 }

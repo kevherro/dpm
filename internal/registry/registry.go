@@ -27,6 +27,14 @@ type Registry struct {
 	Root string
 }
 
+// SearchResult describes a package matched by registry search.
+type SearchResult struct {
+	Name       string
+	Summary    string
+	Homepage   string
+	Categories []string
+}
+
 // New returns a local registry rooted at root.
 func New(root string) (Registry, error) {
 	if root == "" {
@@ -41,7 +49,7 @@ func New(root string) (Registry, error) {
 	return Registry{Root: filepath.Clean(absRoot)}, nil
 }
 
-// Resolve returns the newest available version of name.
+// Resolve returns the newest non-yanked version of name.
 func (r Registry) Resolve(name string) (manifest.Manifest, error) {
 	versions, err := r.Versions(name)
 	if err != nil {
@@ -51,7 +59,19 @@ func (r Registry) Resolve(name string) (manifest.Manifest, error) {
 		return manifest.Manifest{}, fmt.Errorf("%w: %s", ErrPackageNotFound, name)
 	}
 
-	return r.ResolveVersion(name, versions[len(versions)-1])
+	for i := len(versions) - 1; i >= 0; i-- {
+		m, err := r.ResolveVersion(name, versions[i])
+		if err != nil {
+			return manifest.Manifest{}, err
+		}
+		if m.Yanked {
+			continue
+		}
+
+		return m, nil
+	}
+
+	return manifest.Manifest{}, fmt.Errorf("%w: no non-yanked versions for %s", ErrVersionNotFound, name)
 }
 
 // ResolveVersion returns a specific package manifest.
@@ -109,8 +129,8 @@ func (r Registry) Versions(name string) ([]string, error) {
 	return versions, nil
 }
 
-// Search returns package names containing query.
-func (r Registry) Search(query string) ([]string, error) {
+// Search returns packages whose name or metadata contains query.
+func (r Registry) Search(query string) ([]SearchResult, error) {
 	packagesDir := filepath.Join(r.Root, "packages")
 	entries, err := os.ReadDir(packagesDir)
 	if err != nil {
@@ -121,7 +141,7 @@ func (r Registry) Search(query string) ([]string, error) {
 	}
 
 	query = strings.ToLower(query)
-	var matches []string
+	var matches []SearchResult
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -130,11 +150,17 @@ func (r Registry) Search(query string) ([]string, error) {
 		if err := validatePathPart("package", name); err != nil {
 			return nil, fmt.Errorf("invalid registry package directory %q: %w", name, err)
 		}
-		if query == "" || strings.Contains(strings.ToLower(name), query) {
-			matches = append(matches, name)
+		result, err := r.searchResult(name)
+		if err != nil {
+			return nil, err
+		}
+		if result.matches(query) {
+			matches = append(matches, result)
 		}
 	}
-	slices.Sort(matches)
+	slices.SortFunc(matches, func(a, b SearchResult) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 
 	return matches, nil
 }
@@ -168,6 +194,42 @@ func (r Registry) ManifestPath(name, version string) (string, error) {
 	}
 
 	return filepath.Join(r.Root, "packages", name, "versions", version, "dpm.toml"), nil
+}
+
+func (r Registry) searchResult(name string) (SearchResult, error) {
+	pkg, err := r.Package(name)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return SearchResult{Name: name}, nil
+		}
+
+		return SearchResult{}, err
+	}
+
+	return SearchResult{
+		Name:       pkg.Name,
+		Summary:    pkg.Summary,
+		Homepage:   pkg.Homepage,
+		Categories: slices.Clone(pkg.Categories),
+	}, nil
+}
+
+func (r SearchResult) matches(query string) bool {
+	if query == "" {
+		return true
+	}
+	if strings.Contains(strings.ToLower(r.Name), query) ||
+		strings.Contains(strings.ToLower(r.Summary), query) ||
+		strings.Contains(strings.ToLower(r.Homepage), query) {
+		return true
+	}
+	for _, category := range r.Categories {
+		if strings.Contains(strings.ToLower(category), query) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func validatePathPart(kind, value string) error {
