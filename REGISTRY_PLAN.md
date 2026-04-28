@@ -401,13 +401,13 @@ Exact-version parsing design:
 
 ## Milestone 5: First Real Registry
 
-- [ ] Create a separate `dpm-registry` Git repo.
-- [ ] Add `registry.toml`.
-- [ ] Add `ripgrep/package.toml`.
-- [ ] Add `ripgrep` `15.1.0` manifest with the verified Apple Silicon asset.
-- [ ] Run registry validation.
-- [ ] Test `dpm update && dpm install ripgrep` from a clean `DPM_ROOT`.
-- [ ] Document the real-package quickstart.
+- [x] Create a separate `dpm-registry` Git repo.
+- [x] Add `registry.toml`.
+- [x] Add `ripgrep/package.toml`.
+- [x] Add `ripgrep` `15.1.0` manifest with the verified Apple Silicon asset.
+- [x] Run registry validation.
+- [x] Test `dpm update && dpm install ripgrep` from a clean `DPM_ROOT`.
+- [x] Document the real-package quickstart.
 
 ## Milestone 6: User Experience
 

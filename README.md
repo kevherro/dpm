@@ -52,5 +52,23 @@ End-to-end `hello` demo:
 go test ./cmd/dpm -run TestRunHelloEndToEnd -v
 ```
 
+Real `ripgrep` demo using the local development registry:
+
+```sh
+export DPM_ROOT="$(mktemp -d /tmp/dpm-root.XXXXXX)"
+export DPM_REGISTRY_URL="file:///Users/kevin/Development/oss/dpm-registry"
+
+go run ./cmd/dpm update
+go run ./cmd/dpm install ripgrep
+"$DPM_ROOT/bin/rg" --version
+go run ./cmd/dpm list
+```
+
+The local registry can be checked before installing:
+
+```sh
+go run ./cmd/dpm registry validate --verify-artifacts /Users/kevin/Development/oss/dpm-registry
+```
+
 This project is early and intentionally boring. The first milestone is a small
 end-to-end demo package, backed by real tests.
