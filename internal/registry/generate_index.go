@@ -16,7 +16,9 @@ import (
 
 // GenerateIndexOptions configures static index generation.
 type GenerateIndexOptions struct {
-	Root string
+	Root            string
+	SigningKey      string
+	SnapshotVersion int
 }
 
 // GeneratedIndexFile describes one generated metadata file.
@@ -27,9 +29,11 @@ type GeneratedIndexFile struct {
 
 // GenerateIndexResult reports the generated static index.
 type GenerateIndexResult struct {
-	Root     string
-	IndexDir string
-	Files    []GeneratedIndexFile
+	Root            string
+	IndexDir        string
+	Signed          bool
+	SnapshotVersion int
+	Files           []GeneratedIndexFile
 }
 
 // GenerateIndex builds generated static metadata under index/.
@@ -93,6 +97,17 @@ func GenerateIndex(ctx context.Context, opts GenerateIndexOptions) (GenerateInde
 	if _, _, err := writeStaticJSON(tmp, "packages.json", packagesIndex); err != nil {
 		return GenerateIndexResult{}, err
 	}
+	if opts.SigningKey != "" {
+		files, err := generatedFiles(tmp)
+		if err != nil {
+			return GenerateIndexResult{}, err
+		}
+		if err := writeSignedSnapshot(tmp, metadata.Name, opts.SnapshotVersion, opts.SigningKey, files); err != nil {
+			return GenerateIndexResult{}, err
+		}
+	} else if opts.SnapshotVersion != 0 {
+		return GenerateIndexResult{}, fmt.Errorf("snapshot version requires a signing key")
+	}
 
 	indexDir := filepath.Join(reg.Root, StaticIndexDir)
 	if err := replaceIndexDir(tmp, indexDir); err != nil {
@@ -106,9 +121,11 @@ func GenerateIndex(ctx context.Context, opts GenerateIndexOptions) (GenerateInde
 	}
 
 	return GenerateIndexResult{
-		Root:     reg.Root,
-		IndexDir: indexDir,
-		Files:    generated,
+		Root:            reg.Root,
+		IndexDir:        indexDir,
+		Signed:          opts.SigningKey != "",
+		SnapshotVersion: opts.SnapshotVersion,
+		Files:           generated,
 	}, nil
 }
 

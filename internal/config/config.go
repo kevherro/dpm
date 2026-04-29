@@ -17,6 +17,8 @@ const (
 	EnvRegistryURL = "DPM_REGISTRY_URL"
 	// EnvRegistryStaticIndex enables reading generated registry index files.
 	EnvRegistryStaticIndex = "DPM_REGISTRY_STATIC_INDEX"
+	// EnvRegistryPublicKeys configures trusted registry snapshot public keys.
+	EnvRegistryPublicKeys = "DPM_REGISTRY_PUBLIC_KEYS"
 	// DefaultRegistryURL is the placeholder Git registry used by dpm update.
 	DefaultRegistryURL = "https://github.com/kevherro/dpm-registry.git"
 )
@@ -31,6 +33,7 @@ type Config struct {
 	RegistryDir         string
 	RegistryURL         string
 	RegistryStaticIndex bool
+	RegistryPublicKeys  string
 	StateDir            string
 }
 
@@ -82,6 +85,7 @@ func withRegistryEnv(cfg Config, err error) (Config, error) {
 	if truthy(os.Getenv(EnvRegistryStaticIndex)) {
 		cfg.RegistryStaticIndex = true
 	}
+	cfg.RegistryPublicKeys = strings.TrimSpace(os.Getenv(EnvRegistryPublicKeys))
 
 	return cfg, nil
 }

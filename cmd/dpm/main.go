@@ -10,7 +10,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/install"
@@ -229,10 +231,55 @@ func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.
 	if err != nil {
 		return err
 	}
+	snapshot, verified, err := verifyUpdatedRegistrySnapshot(cfg)
+	if err != nil {
+		return err
+	}
 	fmt.Fprintf(stdout, "%s registry %s\n", result.Action, result.Root)
 	fmt.Fprintf(stdout, "revision %s\n", result.Revision)
+	if verified {
+		fmt.Fprintf(stdout, "verified snapshot %d %s\n", snapshot.Version, snapshot.SHA256)
+	}
 
 	return nil
+}
+
+func verifyUpdatedRegistrySnapshot(cfg config.Config) (state.RegistrySnapshot, bool, error) {
+	keys, err := registry.ParsePublicKeys(cfg.RegistryPublicKeys)
+	if err != nil {
+		return state.RegistrySnapshot{}, false, err
+	}
+	if len(keys) == 0 {
+		return state.RegistrySnapshot{}, false, nil
+	}
+	verified, err := registry.VerifySnapshot(cfg.RegistryDir, keys)
+	if err != nil {
+		return state.RegistrySnapshot{}, false, err
+	}
+	store := state.New(cfg)
+	previous, err := store.RegistrySnapshot()
+	if err != nil && !errors.Is(err, state.ErrRegistrySnapshotNotFound) {
+		return state.RegistrySnapshot{}, false, err
+	}
+	if err == nil {
+		if verified.Version < previous.Version {
+			return state.RegistrySnapshot{}, false, fmt.Errorf("registry snapshot rollback: current version %d is older than accepted version %d", verified.Version, previous.Version)
+		}
+		if verified.Version == previous.Version && verified.SHA256 != previous.SHA256 {
+			return state.RegistrySnapshot{}, false, fmt.Errorf("registry snapshot version %d changed from %s to %s", verified.Version, previous.SHA256, verified.SHA256)
+		}
+	}
+	snapshot := state.RegistrySnapshot{
+		Version:    verified.Version,
+		SHA256:     verified.SHA256,
+		KeyID:      verified.KeyID,
+		VerifiedAt: time.Now().UTC().Round(0),
+	}
+	if err := store.SaveRegistrySnapshot(snapshot); err != nil {
+		return state.RegistrySnapshot{}, false, err
+	}
+
+	return snapshot, true, nil
 }
 
 func suggestUpdateForRegistryMiss(cfg config.Config, name string, err error) error {
@@ -356,19 +403,67 @@ func runRegistryValidate(ctx context.Context, _ config.Config, args []string, st
 }
 
 func runRegistryGenerateIndex(ctx context.Context, args []string, stdout io.Writer) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: dpm registry generate-index <path>")
+	opts, err := parseRegistryGenerateIndexArgs(args)
+	if err != nil {
+		return err
 	}
-	result, err := registry.GenerateIndex(ctx, registry.GenerateIndexOptions{Root: args[0]})
+	result, err := registry.GenerateIndex(ctx, opts)
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(stdout, "generated index %s\n", result.IndexDir)
+	if result.Signed {
+		fmt.Fprintf(stdout, "signed snapshot %d\n", result.SnapshotVersion)
+	}
 	for _, file := range result.Files {
 		fmt.Fprintf(stdout, "metadata %s %s\n", relativePath(result.Root, file.Path), file.SHA256)
 	}
 
 	return nil
+}
+
+func parseRegistryGenerateIndexArgs(args []string) (registry.GenerateIndexOptions, error) {
+	var opts registry.GenerateIndexOptions
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--snapshot-version":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return registry.GenerateIndexOptions{}, err
+			}
+			version, err := strconv.Atoi(value)
+			if err != nil || version <= 0 {
+				return registry.GenerateIndexOptions{}, fmt.Errorf("--snapshot-version requires a positive integer")
+			}
+			opts.SnapshotVersion = version
+			i = next
+		case "--signing-key-file":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return registry.GenerateIndexOptions{}, err
+			}
+			data, err := os.ReadFile(value)
+			if err != nil {
+				return registry.GenerateIndexOptions{}, fmt.Errorf("read signing key file %s: %w", value, err)
+			}
+			opts.SigningKey = strings.TrimSpace(string(data))
+			i = next
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return registry.GenerateIndexOptions{}, fmt.Errorf("unknown registry generate-index flag %s", arg)
+			}
+			if opts.Root != "" {
+				return registry.GenerateIndexOptions{}, fmt.Errorf("usage: dpm registry generate-index [--snapshot-version N --signing-key-file path] <path>")
+			}
+			opts.Root = arg
+		}
+	}
+	if opts.Root == "" {
+		return registry.GenerateIndexOptions{}, fmt.Errorf("usage: dpm registry generate-index [--snapshot-version N --signing-key-file path] <path>")
+	}
+
+	return opts, nil
 }
 
 func runRegistryPrepare(ctx context.Context, args []string, stdout io.Writer) error {

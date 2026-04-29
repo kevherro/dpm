@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kevherro/dpm/internal/checksum"
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/link"
 )
@@ -20,6 +21,8 @@ import (
 var (
 	// ErrNotInstalled means a package has no installed state record.
 	ErrNotInstalled = errors.New("package not installed")
+	// ErrRegistrySnapshotNotFound means no verified registry snapshot is recorded.
+	ErrRegistrySnapshotNotFound = errors.New("registry snapshot not found")
 )
 
 // Record describes an installed package.
@@ -32,6 +35,14 @@ type Record struct {
 	Bins         []link.BinLink `json:"bins"`
 	Dependencies []string       `json:"dependencies"`
 	InstalledAt  time.Time      `json:"installed_at"`
+}
+
+// RegistrySnapshot records the latest accepted signed registry snapshot.
+type RegistrySnapshot struct {
+	Version    int       `json:"version"`
+	SHA256     string    `json:"sha256"`
+	KeyID      string    `json:"key_id"`
+	VerifiedAt time.Time `json:"verified_at"`
 }
 
 // Store reads and writes installed package state.
@@ -172,6 +183,79 @@ func (s Store) Remove(name string) error {
 	return nil
 }
 
+// SaveRegistrySnapshot writes the latest accepted signed registry snapshot.
+func (s Store) SaveRegistrySnapshot(snapshot RegistrySnapshot) error {
+	if err := s.validateRegistrySnapshot(snapshot); err != nil {
+		return err
+	}
+	if err := s.cfg.RequireInsideRoot(s.cfg.StateDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.cfg.StateDir, 0o755); err != nil {
+		return fmt.Errorf("create state directory %s: %w", s.cfg.StateDir, err)
+	}
+	path, err := s.registrySnapshotPath()
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(s.cfg.StateDir, ".registry-snapshot-*.json")
+	if err != nil {
+		return fmt.Errorf("create temporary registry snapshot state: %w", err)
+	}
+	tmpPath := tmp.Name()
+	removeTmp := true
+	defer func() {
+		if removeTmp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	enc := json.NewEncoder(tmp)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(snapshot); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("encode registry snapshot state: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary registry snapshot state %s: %w", tmpPath, err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("write registry snapshot state %s: %w", path, err)
+	}
+	removeTmp = false
+
+	return nil
+}
+
+// RegistrySnapshot reads the latest accepted signed registry snapshot.
+func (s Store) RegistrySnapshot() (RegistrySnapshot, error) {
+	path, err := s.registrySnapshotPath()
+	if err != nil {
+		return RegistrySnapshot{}, err
+	}
+	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return RegistrySnapshot{}, ErrRegistrySnapshotNotFound
+	}
+	if err != nil {
+		return RegistrySnapshot{}, fmt.Errorf("open registry snapshot state %s: %w", path, err)
+	}
+	defer f.Close()
+
+	dec := json.NewDecoder(f)
+	dec.DisallowUnknownFields()
+	var snapshot RegistrySnapshot
+	if err := dec.Decode(&snapshot); err != nil {
+		return RegistrySnapshot{}, fmt.Errorf("decode registry snapshot state %s: %w", path, err)
+	}
+	if err := s.validateRegistrySnapshot(snapshot); err != nil {
+		return RegistrySnapshot{}, fmt.Errorf("invalid registry snapshot state %s: %w", path, err)
+	}
+
+	return snapshot, nil
+}
+
 func (s Store) installedDir() (string, error) {
 	dir := filepath.Join(s.cfg.StateDir, "installed")
 	if err := s.cfg.RequireInsideRoot(dir); err != nil {
@@ -179,6 +263,15 @@ func (s Store) installedDir() (string, error) {
 	}
 
 	return dir, nil
+}
+
+func (s Store) registrySnapshotPath() (string, error) {
+	path := filepath.Join(s.cfg.StateDir, "registry_snapshot.json")
+	if err := s.cfg.RequireInsideRoot(path); err != nil {
+		return "", err
+	}
+
+	return path, nil
 }
 
 func (s Store) recordPath(name string) (string, error) {
@@ -249,6 +342,26 @@ func (s Store) validateRecord(record Record) error {
 		if err := validateName(dep); err != nil {
 			return fmt.Errorf("invalid dependency %q: %w", dep, err)
 		}
+	}
+
+	return nil
+}
+
+func (s Store) validateRegistrySnapshot(snapshot RegistrySnapshot) error {
+	if snapshot.Version <= 0 {
+		return fmt.Errorf("registry snapshot version must be greater than zero")
+	}
+	if snapshot.SHA256 == "" {
+		return fmt.Errorf("registry snapshot sha256 is required")
+	}
+	if _, err := checksum.NormalizeSHA256(snapshot.SHA256); err != nil {
+		return fmt.Errorf("registry snapshot sha256: %w", err)
+	}
+	if snapshot.KeyID == "" {
+		return fmt.Errorf("registry snapshot key_id is required")
+	}
+	if snapshot.VerifiedAt.IsZero() {
+		return fmt.Errorf("registry snapshot verified_at is required")
 	}
 
 	return nil

@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"io"
 	"os"
 	"os/exec"
@@ -340,16 +342,24 @@ func TestRunRegistryGenerateIndexAndInstallWithStaticFlag(t *testing.T) {
 	writeCLIRegistryMetadata(t, cfg)
 	writeCLIPackageMetadata(t, cfg, "hello", "Hello", "https://example.com/hello", "MIT", []string{"demo"})
 	testutil.WriteHelloRegistry(t, cfg)
+	signingKey, _ := testCLISigningKeys()
+	keyFile := filepath.Join(t.TempDir(), "signing.key")
+	if err := os.WriteFile(keyFile, []byte(signingKey+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(signing key) error = %v", err)
+	}
 
-	code, stdout, stderr := runCLI(t, []string{"registry", "generate-index", cfg.RegistryDir})
+	code, stdout, stderr := runCLI(t, []string{"registry", "generate-index", "--snapshot-version", "3", "--signing-key-file", keyFile, cfg.RegistryDir})
 	if code != 0 {
 		t.Fatalf("registry generate-index code = %d, stderr = %q", code, stderr)
 	}
 	for _, want := range []string{
 		"generated index " + filepath.Join(cfg.RegistryDir, registry.StaticIndexDir) + "\n",
+		"signed snapshot 3\n",
 		"metadata index/packages.json ",
 		"metadata index/packages/hello/versions.json ",
 		"metadata index/packages/hello/versions/1.0.0/dpm.json ",
+		"metadata index/snapshot.json ",
+		"metadata index/snapshot.json.sig ",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("registry generate-index stdout = %q, want substring %q", stdout, want)
@@ -363,6 +373,69 @@ func TestRunRegistryGenerateIndexAndInstallWithStaticFlag(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "installing hello 1.0.0\n") {
 		t.Fatalf("static install stdout = %q, want hello install", stdout)
+	}
+}
+
+func TestRunUpdateVerifiesSignedSnapshotAndRejectsRollback(t *testing.T) {
+	requireCLIGit(t)
+	signingKey, publicKey := testCLISigningKeys()
+	source := filepath.Join(t.TempDir(), "source-registry")
+	sourceCfg := config.Config{RegistryDir: source}
+	writeCLIRegistryMetadata(t, sourceCfg)
+	writeCLIPackageMetadata(t, sourceCfg, "hello", "Hello", "https://example.com/hello", "MIT", []string{"demo"})
+	testutil.WriteHelloRegistry(t, sourceCfg)
+	if _, err := registry.GenerateIndex(context.Background(), registry.GenerateIndexOptions{
+		Root:            source,
+		SigningKey:      signingKey,
+		SnapshotVersion: 2,
+	}); err != nil {
+		t.Fatalf("GenerateIndex(version 2) error = %v", err)
+	}
+	runGit(t, source, "init")
+	runGit(t, source, "add", ".")
+	runGit(t, source, "-c", "user.name=dpm-test", "-c", "user.email=dpm@example.invalid", "commit", "--no-gpg-sign", "-m", "snapshot 2")
+
+	cfg := testCLIConfig(t)
+	t.Setenv(config.EnvRegistryURL, cliFileURL(source))
+	t.Setenv(config.EnvRegistryPublicKeys, publicKey)
+	code, stdout, stderr := runCLI(t, []string{"update"})
+	if code != 0 {
+		t.Fatalf("update code = %d, stderr = %q", code, stderr)
+	}
+	if !strings.Contains(stdout, "verified snapshot 2 ") {
+		t.Fatalf("update stdout = %q, want verified snapshot", stdout)
+	}
+	record, err := state.New(cfg).RegistrySnapshot()
+	if err != nil {
+		t.Fatalf("RegistrySnapshot() error = %v", err)
+	}
+	if record.Version != 2 {
+		t.Fatalf("registry snapshot version = %d, want 2", record.Version)
+	}
+
+	if _, err := registry.GenerateIndex(context.Background(), registry.GenerateIndexOptions{
+		Root:            source,
+		SigningKey:      signingKey,
+		SnapshotVersion: 1,
+	}); err != nil {
+		t.Fatalf("GenerateIndex(version 1) error = %v", err)
+	}
+	runGit(t, source, "add", ".")
+	runGit(t, source, "-c", "user.name=dpm-test", "-c", "user.email=dpm@example.invalid", "commit", "--no-gpg-sign", "-m", "snapshot 1")
+
+	code, _, stderr = runCLI(t, []string{"update"})
+	if code != 1 {
+		t.Fatalf("rollback update code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr, "registry snapshot rollback") {
+		t.Fatalf("rollback stderr = %q, want rollback error", stderr)
+	}
+	record, err = state.New(cfg).RegistrySnapshot()
+	if err != nil {
+		t.Fatalf("RegistrySnapshot() after rollback error = %v", err)
+	}
+	if record.Version != 2 {
+		t.Fatalf("registry snapshot version after rollback = %d, want preserved 2", record.Version)
 	}
 }
 
@@ -453,6 +526,7 @@ func testCLIConfig(t *testing.T) config.Config {
 	t.Setenv(config.EnvRoot, root)
 	t.Setenv(config.EnvRegistryURL, "")
 	t.Setenv(config.EnvRegistryStaticIndex, "")
+	t.Setenv(config.EnvRegistryPublicKeys, "")
 	cfg, err := config.FromRoot(root)
 	if err != nil {
 		t.Fatalf("FromRoot() error = %v", err)
@@ -618,4 +692,15 @@ func writeCLIPrepareArtifact(t *testing.T, path, bin string) {
 	if err := f.Close(); err != nil {
 		t.Fatalf("file Close() error = %v", err)
 	}
+}
+
+func testCLISigningKeys() (string, string) {
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = 9
+	}
+	privateKey := ed25519.NewKeyFromSeed(seed)
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+
+	return base64.StdEncoding.EncodeToString(privateKey), base64.StdEncoding.EncodeToString(publicKey)
 }

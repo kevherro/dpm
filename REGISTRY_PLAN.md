@@ -483,12 +483,55 @@ DPM_REGISTRY_STATIC_INDEX=1 dpm install <name>
 
 ## Milestone 9: Signed Snapshots
 
-- [ ] Define signed snapshot metadata.
-- [ ] Decide whether to implement TUF directly or a smaller signed-release file.
-- [ ] Add registry public-key configuration.
-- [ ] Verify snapshot signatures in `dpm update`.
-- [ ] Prevent rollback using stored snapshot version/checkpoint state.
-- [ ] Add key rotation story before relying on signatures.
+- [x] Define signed snapshot metadata.
+- [x] Decide whether to implement TUF directly or a smaller signed-release file.
+- [x] Add registry public-key configuration.
+- [x] Verify snapshot signatures in `dpm update`.
+- [x] Prevent rollback using stored snapshot version/checkpoint state.
+- [x] Add key rotation story before relying on signatures.
+
+Milestone 9 uses a smaller signed-release file instead of full TUF. The source
+registry remains Git-authored, while generated distribution metadata can include:
+
+```text
+index/
+  snapshot.json
+  snapshot.json.sha256
+  snapshot.json.sig
+  snapshot.json.sig.sha256
+```
+
+`snapshot.json` contains schema, monotonic version, registry name, and checksums
+for generated metadata files. `snapshot.json.sig` is a detached Ed25519
+signature over the canonical generated `snapshot.json` bytes. The command shape
+is:
+
+```sh
+dpm registry generate-index \
+  --snapshot-version <n> \
+  --signing-key-file <base64-ed25519-key-file> \
+  <registry-path>
+```
+
+Clients trust keys via comma-separated base64 Ed25519 public keys:
+
+```sh
+DPM_REGISTRY_PUBLIC_KEYS=<key1>,<key2> dpm update
+```
+
+When keys are configured, `dpm update` verifies the signed snapshot after the
+Git clone/pull and records the accepted snapshot version, checksum, key id, and
+verification time in state. A future update is rejected if it presents a lower
+snapshot version, or if the same version has different snapshot bytes.
+
+Key rotation story:
+
+- Publish a client/config update that trusts both old and new public keys.
+- Sign snapshots with the new key after enough clients trust both keys.
+- Keep the old key trusted during the overlap window.
+- Remove the old key only after old-key-only clients are no longer supported.
+- If a key is compromised, publish a higher-version snapshot signed by a still
+  trusted replacement key and remove the compromised key from trusted config.
 
 ## Milestone 10: Performance And Benchmarks
 

@@ -5,6 +5,8 @@ package registry
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -108,6 +110,68 @@ func TestStaticRegistryRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestGenerateIndexSignsAndVerifiesSnapshot(t *testing.T) {
+	root := t.TempDir()
+	writeValidationMetadata(t, root)
+	writeValidationPackage(t, root, "hello")
+	writeValidationManifest(t, root, validManifestSpec(t, root, "hello", "1.0.0"))
+	signingKey, publicKey := testRegistrySigningKeys()
+
+	result, err := GenerateIndex(context.Background(), GenerateIndexOptions{
+		Root:            root,
+		SigningKey:      signingKey,
+		SnapshotVersion: 7,
+	})
+	if err != nil {
+		t.Fatalf("GenerateIndex() error = %v", err)
+	}
+	if !result.Signed || result.SnapshotVersion != 7 {
+		t.Fatalf("GenerateIndex() = %#v, want signed snapshot version 7", result)
+	}
+	assertGeneratedFile(t, result.Files, filepath.Join(root, StaticIndexDir, SnapshotFile))
+	assertGeneratedFile(t, result.Files, filepath.Join(root, StaticIndexDir, SnapshotSignatureFile))
+
+	keys, err := ParsePublicKeys(publicKey)
+	if err != nil {
+		t.Fatalf("ParsePublicKeys() error = %v", err)
+	}
+	verified, err := VerifySnapshot(root, keys)
+	if err != nil {
+		t.Fatalf("VerifySnapshot() error = %v", err)
+	}
+	if verified.Version != 7 || verified.KeyID != keys[0].ID || verified.SHA256 == "" {
+		t.Fatalf("VerifySnapshot() = %#v, want version/key/sha", verified)
+	}
+}
+
+func TestVerifySnapshotRejectsUntrustedKey(t *testing.T) {
+	root := t.TempDir()
+	writeValidationMetadata(t, root)
+	writeValidationPackage(t, root, "hello")
+	writeValidationManifest(t, root, validManifestSpec(t, root, "hello", "1.0.0"))
+	signingKey, _ := testRegistrySigningKeys()
+	_, otherPublicKey := testRegistrySigningKeysWithByte(8)
+	if _, err := GenerateIndex(context.Background(), GenerateIndexOptions{
+		Root:            root,
+		SigningKey:      signingKey,
+		SnapshotVersion: 1,
+	}); err != nil {
+		t.Fatalf("GenerateIndex() error = %v", err)
+	}
+	keys, err := ParsePublicKeys(otherPublicKey)
+	if err != nil {
+		t.Fatalf("ParsePublicKeys() error = %v", err)
+	}
+
+	_, err = VerifySnapshot(root, keys)
+	if err == nil {
+		t.Fatal("VerifySnapshot() error = nil, want untrusted key")
+	}
+	if !strings.Contains(err.Error(), "not trusted") {
+		t.Fatalf("VerifySnapshot() error = %q, want untrusted key", err)
+	}
+}
+
 func TestGenerateIndexRejectsInvalidSourceRegistry(t *testing.T) {
 	root := t.TempDir()
 	writeValidationMetadata(t, root)
@@ -120,6 +184,21 @@ func TestGenerateIndexRejectsInvalidSourceRegistry(t *testing.T) {
 	if !strings.Contains(err.Error(), "registry is invalid") {
 		t.Fatalf("GenerateIndex() error = %q, want validation summary", err)
 	}
+}
+
+func testRegistrySigningKeys() (string, string) {
+	return testRegistrySigningKeysWithByte(7)
+}
+
+func testRegistrySigningKeysWithByte(seedByte byte) (string, string) {
+	seed := make([]byte, ed25519.SeedSize)
+	for i := range seed {
+		seed[i] = seedByte
+	}
+	privateKey := ed25519.NewKeyFromSeed(seed)
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+
+	return base64.StdEncoding.EncodeToString(privateKey), base64.StdEncoding.EncodeToString(publicKey)
 }
 
 func newStaticRegistry(t *testing.T, root string) Registry {

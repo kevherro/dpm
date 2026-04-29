@@ -15,6 +15,7 @@ func TestDefaultUsesHomeDPMRoot(t *testing.T) {
 	t.Setenv(EnvRoot, "")
 	t.Setenv(EnvRegistryURL, "")
 	t.Setenv(EnvRegistryStaticIndex, "")
+	t.Setenv(EnvRegistryPublicKeys, "")
 
 	cfg, err := Default()
 	if err != nil {
@@ -33,6 +34,7 @@ func TestDefaultUsesDPMRootOverride(t *testing.T) {
 	t.Setenv(EnvRoot, root)
 	t.Setenv(EnvRegistryURL, "")
 	t.Setenv(EnvRegistryStaticIndex, "")
+	t.Setenv(EnvRegistryPublicKeys, "")
 
 	cfg, err := Default()
 	if err != nil {
@@ -74,6 +76,24 @@ func TestDefaultUsesStaticRegistryFlag(t *testing.T) {
 
 	if !cfg.RegistryStaticIndex {
 		t.Fatal("RegistryStaticIndex = false, want true")
+	}
+}
+
+func TestDefaultUsesRegistryPublicKeys(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "custom-root")
+	keys := "abc,def"
+	t.Setenv(EnvRoot, root)
+	t.Setenv(EnvRegistryURL, "")
+	t.Setenv(EnvRegistryStaticIndex, "")
+	t.Setenv(EnvRegistryPublicKeys, keys)
+
+	cfg, err := Default()
+	if err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+
+	if cfg.RegistryPublicKeys != keys {
+		t.Fatalf("RegistryPublicKeys = %q, want %q", cfg.RegistryPublicKeys, keys)
 	}
 }
 
@@ -173,6 +193,7 @@ func assertLayout(t *testing.T, cfg Config, root string) {
 		RegistryDir:         filepath.Join(root, "registry"),
 		RegistryURL:         DefaultRegistryURL,
 		RegistryStaticIndex: false,
+		RegistryPublicKeys:  "",
 		StateDir:            filepath.Join(root, "state"),
 	}
 

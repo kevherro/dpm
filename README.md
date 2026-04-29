@@ -55,6 +55,10 @@ and prints a review diff.
 `index/`, including `packages.json`, per-package `versions.json`, normalized
 per-version manifests, and `.sha256` sidecars. Set
 `DPM_REGISTRY_STATIC_INDEX=1` to make client reads use that generated index.
+Pass `--snapshot-version <n> --signing-key-file <path>` to also write signed
+`index/snapshot.json` metadata. Configure trusted Ed25519 public keys with
+`DPM_REGISTRY_PUBLIC_KEYS` as comma-separated base64 keys; `dpm update` verifies
+the signed snapshot and refuses rollback to an older accepted snapshot version.
 
 Example package preparation:
 
@@ -68,6 +72,15 @@ go run ./cmd/dpm registry prepare \
   --license "MIT OR Unlicense" \
   --category search \
   --category cli \
+  /Users/kevin/Development/oss/dpm-registry
+```
+
+Example signed static index generation:
+
+```sh
+go run ./cmd/dpm registry generate-index \
+  --snapshot-version 1 \
+  --signing-key-file ./registry-signing.key \
   /Users/kevin/Development/oss/dpm-registry
 ```
 

@@ -222,6 +222,65 @@ func TestRemoveDoesNotDeleteOutsideStateRoot(t *testing.T) {
 	assertFile(t, outside, "outside")
 }
 
+func TestSaveAndGetRegistrySnapshot(t *testing.T) {
+	store, _ := testStore(t)
+	snapshot := RegistrySnapshot{
+		Version:    2,
+		SHA256:     strings.Repeat("a", 64),
+		KeyID:      strings.Repeat("b", 64),
+		VerifiedAt: time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC),
+	}
+
+	if err := store.SaveRegistrySnapshot(snapshot); err != nil {
+		t.Fatalf("SaveRegistrySnapshot() error = %v", err)
+	}
+	got, err := store.RegistrySnapshot()
+	if err != nil {
+		t.Fatalf("RegistrySnapshot() error = %v", err)
+	}
+	if got != snapshot {
+		t.Fatalf("RegistrySnapshot() = %#v, want %#v", got, snapshot)
+	}
+}
+
+func TestRegistrySnapshotMissing(t *testing.T) {
+	store, _ := testStore(t)
+
+	_, err := store.RegistrySnapshot()
+	if !errors.Is(err, ErrRegistrySnapshotNotFound) {
+		t.Fatalf("RegistrySnapshot() error = %v, want ErrRegistrySnapshotNotFound", err)
+	}
+}
+
+func TestSaveRegistrySnapshotRejectsInvalidSnapshot(t *testing.T) {
+	store, _ := testStore(t)
+	valid := RegistrySnapshot{
+		Version:    2,
+		SHA256:     strings.Repeat("a", 64),
+		KeyID:      strings.Repeat("b", 64),
+		VerifiedAt: time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC),
+	}
+	tests := []struct {
+		name   string
+		mutate func(*RegistrySnapshot)
+	}{
+		{name: "zero version", mutate: func(s *RegistrySnapshot) { s.Version = 0 }},
+		{name: "empty sha", mutate: func(s *RegistrySnapshot) { s.SHA256 = "" }},
+		{name: "short sha", mutate: func(s *RegistrySnapshot) { s.SHA256 = "abc" }},
+		{name: "empty key", mutate: func(s *RegistrySnapshot) { s.KeyID = "" }},
+		{name: "zero verified", mutate: func(s *RegistrySnapshot) { s.VerifiedAt = time.Time{} }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshot := valid
+			tt.mutate(&snapshot)
+			if err := store.SaveRegistrySnapshot(snapshot); err == nil {
+				t.Fatal("SaveRegistrySnapshot() error = nil, want error")
+			}
+		})
+	}
+}
+
 func testStore(t *testing.T) (Store, config.Config) {
 	t.Helper()
 

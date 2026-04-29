@@ -4,13 +4,10 @@
 package registry
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -277,31 +274,12 @@ func (r Registry) loadStaticManifest(relPath, expectedSHA string) (manifest.Mani
 }
 
 func readStaticJSON(path, expectedSHA string, dst any) error {
-	data, err := os.ReadFile(path)
+	data, err := readStaticFile(path, expectedSHA)
 	if err != nil {
 		return err
 	}
-	if expectedSHA == "" {
-		expectedSHA, err = readStaticSidecar(path)
-		if err != nil {
-			return err
-		}
-	}
-	actual := sha256Hex(data)
-	if actual != expectedSHA {
-		return checksum.MismatchError{Path: path, Expected: expectedSHA, Actual: actual}
-	}
 
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(dst); err != nil {
-		return fmt.Errorf("parse static json %s: %w", path, err)
-	}
-	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return fmt.Errorf("parse static json %s: trailing data", path)
-	}
-
-	return nil
+	return decodeStaticJSON(path, data, dst)
 }
 
 func readStaticSidecar(path string) (string, error) {
