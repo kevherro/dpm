@@ -43,8 +43,9 @@ metadata under `packages/<name>/package.toml` and version manifests under
 `packages/<name>/versions/<version>/dpm.toml`.
 
 `dpm update` clones or fast-forwards that checkout. The default registry URL is
-a placeholder; set `DPM_REGISTRY_URL` to a Git URL or `file:///...` local repo
-while developing.
+the placeholder SSH Git remote `git@github.com:kevherro/dpm-registry.git`; set
+`DPM_REGISTRY_URL` to another SSH Git URL or `file:///...` local repo while
+developing.
 
 `dpm search` matches package names, summaries, homepages, and categories.
 `dpm info` shows package metadata plus the selected non-yanked version.

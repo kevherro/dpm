@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -60,6 +61,15 @@ func TestDefaultUsesRegistryURLOverride(t *testing.T) {
 
 	if cfg.RegistryURL != url {
 		t.Fatalf("RegistryURL = %q, want %q", cfg.RegistryURL, url)
+	}
+}
+
+func TestDefaultRegistryURLUsesSSH(t *testing.T) {
+	if DefaultRegistryURL != "git@github.com:kevherro/dpm-registry.git" {
+		t.Fatalf("DefaultRegistryURL = %q, want SSH Git URL", DefaultRegistryURL)
+	}
+	if strings.HasPrefix(DefaultRegistryURL, "http://") || strings.HasPrefix(DefaultRegistryURL, "https://") {
+		t.Fatalf("DefaultRegistryURL = %q, want non-HTTP Git URL", DefaultRegistryURL)
 	}
 }
 

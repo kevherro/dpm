@@ -19,8 +19,8 @@ const (
 	EnvRegistryStaticIndex = "DPM_REGISTRY_STATIC_INDEX"
 	// EnvRegistryPublicKeys configures trusted registry snapshot public keys.
 	EnvRegistryPublicKeys = "DPM_REGISTRY_PUBLIC_KEYS"
-	// DefaultRegistryURL is the placeholder Git registry used by dpm update.
-	DefaultRegistryURL = "https://github.com/kevherro/dpm-registry.git"
+	// DefaultRegistryURL is the placeholder SSH Git registry used by dpm update.
+	DefaultRegistryURL = "git@github.com:kevherro/dpm-registry.git"
 )
 
 // Config contains the filesystem paths dpm is allowed to manage.
