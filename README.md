@@ -30,6 +30,9 @@ dpm search <query>
 dpm info <name>
 dpm update
 dpm doctor
+dpm version [--verbose]
+dpm help [command]
+dpm help registry <command>
 dpm registry validate [--verify-artifacts] <path>
 dpm registry prepare [options] <path>
 dpm registry generate-index <path>
@@ -45,6 +48,8 @@ while developing.
 
 `dpm search` matches package names, summaries, homepages, and categories.
 `dpm info` shows package metadata plus the selected non-yanked version.
+`dpm help <command>` shows command-specific help without reading local dpm
+configuration.
 `dpm registry validate` checks registry structure and can optionally verify
 artifact checksums.
 `dpm registry prepare` is a maintainer helper that fetches one artifact URL,
@@ -111,6 +116,19 @@ The local registry can be checked before installing:
 ```sh
 go run ./cmd/dpm registry validate --verify-artifacts /Users/kevin/Development/oss/dpm-registry
 ```
+
+Versioned builds:
+
+```sh
+bash scripts/build.sh
+dist/dpm version --verbose
+```
+
+`VERSION` is the source version for local release builds. `scripts/build.sh`
+injects `VERSION`, the current git commit, and a UTC build timestamp into the
+binary with Go linker flags. It targets `darwin/arm64` by default; override
+`GOOS`, `GOARCH`, `DPM_VERSION`, `DPM_COMMIT`, `DPM_DATE`, or `DPM_OUT` for
+specific release jobs.
 
 Troubleshooting:
 

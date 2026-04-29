@@ -136,6 +136,99 @@ func TestRunSearchAndInfo(t *testing.T) {
 	}
 }
 
+func TestRunVersion(t *testing.T) {
+	code, stdout, stderr := runCLI(t, []string{"version"})
+	if code != 0 {
+		t.Fatalf("version code = %d, stderr = %q", code, stderr)
+	}
+	if stdout != "dpm dev\n" {
+		t.Fatalf("version stdout = %q, want default version", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("version stderr = %q, want empty", stderr)
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"version", "--verbose"})
+	if code != 0 {
+		t.Fatalf("version --verbose code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"version dev\n",
+		"commit unknown\n",
+		"date unknown\n",
+		"go go",
+		"platform ",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("version --verbose stdout = %q, want substring %q", stdout, want)
+		}
+	}
+}
+
+func TestRunHelp(t *testing.T) {
+	code, stdout, stderr := runCLI(t, []string{"help"})
+	if code != 0 {
+		t.Fatalf("help code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"usage: dpm <command> [args]\n",
+		"commands: install, remove, list, search, info, update, doctor, registry, version, help\n",
+		"run `dpm help <command>` for details\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("help stdout = %q, want substring %q", stdout, want)
+		}
+	}
+
+	for _, tt := range []struct {
+		args  []string
+		usage string
+	}{
+		{[]string{"help", "install"}, "usage: dpm install <name>\n"},
+		{[]string{"help", "remove"}, "usage: dpm remove <name>\n"},
+		{[]string{"help", "list"}, "usage: dpm list\n"},
+		{[]string{"help", "search"}, "usage: dpm search <query>\n"},
+		{[]string{"help", "info"}, "usage: dpm info <name>\n"},
+		{[]string{"help", "update"}, "usage: dpm update\n"},
+		{[]string{"help", "doctor"}, "usage: dpm doctor\n"},
+		{[]string{"help", "version"}, "usage: dpm version [--verbose]\n"},
+		{[]string{"help", "help"}, "usage: dpm help [command]\n"},
+		{[]string{"help", "registry", "validate"}, "usage: dpm registry validate [--verify-artifacts] <path>\n"},
+		{[]string{"help", "registry", "prepare"}, "usage: dpm registry prepare [options] <path>\n"},
+		{[]string{"help", "registry", "generate-index"}, "usage: dpm registry generate-index [--snapshot-version N --signing-key-file path] <path>\n"},
+	} {
+		code, stdout, stderr = runCLI(t, tt.args)
+		if code != 0 {
+			t.Fatalf("%v code = %d, stderr = %q", tt.args, code, stderr)
+		}
+		if !strings.Contains(stdout, tt.usage) {
+			t.Fatalf("%v stdout = %q, want usage %q", tt.args, stdout, tt.usage)
+		}
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"help", "registry"})
+	if code != 0 {
+		t.Fatalf("help registry code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"usage: dpm registry <validate|prepare|generate-index> [args]\n",
+		"commands: validate, prepare, generate-index\n",
+		"run `dpm help registry <command>` for details\n",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("help registry stdout = %q, want substring %q", stdout, want)
+		}
+	}
+
+	code, _, stderr = runCLI(t, []string{"help", "bogus"})
+	if code != 1 {
+		t.Fatalf("help bogus code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr, `unknown help topic "bogus"`) {
+		t.Fatalf("help bogus stderr = %q, want unknown topic", stderr)
+	}
+}
+
 func TestRunSearchAndInfoUsePackageMetadata(t *testing.T) {
 	cfg := testCLIConfig(t)
 	writeCLIManifest(t, cfg, "ripgrep", "15.1.0")
@@ -508,6 +601,14 @@ func TestRunBadArgs(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "usage: dpm install <name>") {
 		t.Fatalf("stderr = %q, want install usage", stderr)
+	}
+
+	code, _, stderr = runCLI(t, []string{"version", "--json"})
+	if code != 1 {
+		t.Fatalf("version bad arg code = %d, want 1", code)
+	}
+	if !strings.Contains(stderr, "usage: dpm version [--verbose]") {
+		t.Fatalf("stderr = %q, want version usage", stderr)
 	}
 
 	code, _, stderr = runCLI(t, []string{"bogus"})

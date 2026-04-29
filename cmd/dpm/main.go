@@ -19,6 +19,7 @@ import (
 	"github.com/kevherro/dpm/internal/maintain"
 	"github.com/kevherro/dpm/internal/registry"
 	"github.com/kevherro/dpm/internal/state"
+	"github.com/kevherro/dpm/internal/version"
 )
 
 func main() {
@@ -29,6 +30,24 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		printUsage(stderr)
 		return 2
+	}
+
+	switch args[0] {
+	case "version":
+		if err := runVersion(args[1:], stdout); err != nil {
+			printError(stderr, err)
+			return 1
+		}
+		return 0
+	case "help":
+		if err := runHelp(args[1:], stdout); err != nil {
+			printError(stderr, err)
+			return 1
+		}
+		return 0
+	case "-h", "--help":
+		printUsage(stdout)
+		return 0
 	}
 
 	cfg, err := config.Default()
@@ -55,9 +74,6 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		runErr = runDoctor(ctx, cfg, args[1:], stdout)
 	case "registry":
 		runErr = runRegistry(ctx, cfg, args[1:], stdout)
-	case "help", "-h", "--help":
-		printUsage(stdout)
-		return 0
 	default:
 		printUsage(stderr)
 		return 2
@@ -68,6 +84,94 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 
 	return 0
+}
+
+func runHelp(args []string, stdout io.Writer) error {
+	if len(args) == 0 {
+		printUsage(stdout)
+		return nil
+	}
+
+	switch args[0] {
+	case "install":
+		return printTopicHelp(stdout, args, "dpm install <name>", "Install a package from the current registry.")
+	case "remove":
+		return printTopicHelp(stdout, args, "dpm remove <name>", "Remove an installed package, its isolated prefix, and owned bin links.")
+	case "list":
+		return printTopicHelp(stdout, args, "dpm list", "List installed packages.")
+	case "search":
+		return printTopicHelp(stdout, args, "dpm search <query>", "Search package names and registry metadata.")
+	case "info":
+		return printTopicHelp(stdout, args, "dpm info <name>", "Show package metadata and the selected install manifest.")
+	case "update":
+		return printTopicHelp(stdout, args, "dpm update", "Clone or fast-forward the configured registry checkout.")
+	case "doctor":
+		return printTopicHelp(stdout, args, "dpm doctor", "Check dpm directories, PATH visibility, and registry revision state.")
+	case "version":
+		return printTopicHelp(stdout, args, "dpm version [--verbose]", "Print dpm build version metadata.")
+	case "registry":
+		return runRegistryHelp(args[1:], stdout)
+	case "help":
+		return printTopicHelp(stdout, args, "dpm help [command]", "Show help for dpm or a subcommand.")
+	default:
+		return fmt.Errorf("unknown help topic %q", strings.Join(args, " "))
+	}
+}
+
+func runRegistryHelp(args []string, stdout io.Writer) error {
+	if len(args) == 0 {
+		printHelp(stdout,
+			"dpm registry <validate|prepare|generate-index> [args]",
+			"Registry maintainer commands.",
+			"commands: validate, prepare, generate-index",
+			"run `dpm help registry <command>` for details",
+		)
+		return nil
+	}
+
+	switch args[0] {
+	case "validate":
+		return printTopicHelp(stdout, args, "dpm registry validate [--verify-artifacts] <path>", "Validate registry metadata and optionally verify artifact checksums.")
+	case "prepare":
+		return printTopicHelp(stdout, args, "dpm registry prepare [options] <path>", "Prepare package metadata from a pinned artifact URL.")
+	case "generate-index":
+		return printTopicHelp(stdout, args, "dpm registry generate-index [--snapshot-version N --signing-key-file path] <path>", "Generate static registry index metadata and optional signed snapshot files.")
+	default:
+		return fmt.Errorf("unknown help topic %q", "registry "+strings.Join(args, " "))
+	}
+}
+
+func printTopicHelp(stdout io.Writer, args []string, usage, summary string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("unknown help topic %q", strings.Join(args, " "))
+	}
+	printHelp(stdout, usage, summary)
+	return nil
+}
+
+func printHelp(stdout io.Writer, usage string, lines ...string) {
+	fmt.Fprintf(stdout, "usage: %s\n", usage)
+	for _, line := range lines {
+		fmt.Fprintln(stdout, line)
+	}
+}
+
+func runVersion(args []string, stdout io.Writer) error {
+	if len(args) == 0 {
+		fmt.Fprintf(stdout, "dpm %s\n", version.Current().Version)
+		return nil
+	}
+	if len(args) == 1 && (args[0] == "--verbose" || args[0] == "-v") {
+		info := version.Current()
+		fmt.Fprintf(stdout, "version %s\n", info.Version)
+		fmt.Fprintf(stdout, "commit %s\n", info.Commit)
+		fmt.Fprintf(stdout, "date %s\n", info.Date)
+		fmt.Fprintf(stdout, "go %s\n", info.GoVersion)
+		fmt.Fprintf(stdout, "platform %s\n", info.Platform)
+		return nil
+	}
+
+	return fmt.Errorf("usage: dpm version [--verbose]")
 }
 
 func runInstall(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
@@ -623,7 +727,8 @@ func pathContains(dir string) bool {
 
 func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: dpm <command> [args]")
-	fmt.Fprintln(w, "commands: install, remove, list, search, info, update, doctor, registry")
+	fmt.Fprintln(w, "commands: install, remove, list, search, info, update, doctor, registry, version, help")
+	fmt.Fprintln(w, "run `dpm help <command>` for details")
 }
 
 func printError(w io.Writer, err error) {
