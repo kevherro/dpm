@@ -15,26 +15,29 @@ const (
 	EnvRoot = "DPM_ROOT"
 	// EnvRegistryURL overrides the default Git registry URL.
 	EnvRegistryURL = "DPM_REGISTRY_URL"
+	// EnvRegistryStaticIndex enables reading generated registry index files.
+	EnvRegistryStaticIndex = "DPM_REGISTRY_STATIC_INDEX"
 	// DefaultRegistryURL is the placeholder Git registry used by dpm update.
 	DefaultRegistryURL = "https://github.com/kevherro/dpm-registry.git"
 )
 
 // Config contains the filesystem paths dpm is allowed to manage.
 type Config struct {
-	Root         string
-	BinDir       string
-	PkgsDir      string
-	DownloadsDir string
-	CacheDir     string
-	RegistryDir  string
-	RegistryURL  string
-	StateDir     string
+	Root                string
+	BinDir              string
+	PkgsDir             string
+	DownloadsDir        string
+	CacheDir            string
+	RegistryDir         string
+	RegistryURL         string
+	RegistryStaticIndex bool
+	StateDir            string
 }
 
 // Default returns configuration derived from the environment.
 func Default() (Config, error) {
 	if root := os.Getenv(EnvRoot); root != "" {
-		return withRegistryURL(FromRoot(root))
+		return withRegistryEnv(FromRoot(root))
 	}
 
 	home, err := os.UserHomeDir()
@@ -42,7 +45,7 @@ func Default() (Config, error) {
 		return Config{}, fmt.Errorf("find home directory: %w", err)
 	}
 
-	return withRegistryURL(FromRoot(filepath.Join(home, ".dpm")))
+	return withRegistryEnv(FromRoot(filepath.Join(home, ".dpm")))
 }
 
 // FromRoot returns configuration rooted at root.
@@ -69,15 +72,27 @@ func FromRoot(root string) (Config, error) {
 	}, nil
 }
 
-func withRegistryURL(cfg Config, err error) (Config, error) {
+func withRegistryEnv(cfg Config, err error) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
 	if url := os.Getenv(EnvRegistryURL); url != "" {
 		cfg.RegistryURL = url
 	}
+	if truthy(os.Getenv(EnvRegistryStaticIndex)) {
+		cfg.RegistryStaticIndex = true
+	}
 
 	return cfg, nil
+}
+
+func truthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // EnsureDirs creates the standard dpm directory layout.

@@ -335,6 +335,37 @@ func TestRunRegistryPrepare(t *testing.T) {
 	}
 }
 
+func TestRunRegistryGenerateIndexAndInstallWithStaticFlag(t *testing.T) {
+	cfg := testCLIConfig(t)
+	writeCLIRegistryMetadata(t, cfg)
+	writeCLIPackageMetadata(t, cfg, "hello", "Hello", "https://example.com/hello", "MIT", []string{"demo"})
+	testutil.WriteHelloRegistry(t, cfg)
+
+	code, stdout, stderr := runCLI(t, []string{"registry", "generate-index", cfg.RegistryDir})
+	if code != 0 {
+		t.Fatalf("registry generate-index code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"generated index " + filepath.Join(cfg.RegistryDir, registry.StaticIndexDir) + "\n",
+		"metadata index/packages.json ",
+		"metadata index/packages/hello/versions.json ",
+		"metadata index/packages/hello/versions/1.0.0/dpm.json ",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("registry generate-index stdout = %q, want substring %q", stdout, want)
+		}
+	}
+
+	t.Setenv(config.EnvRegistryStaticIndex, "1")
+	code, stdout, stderr = runCLI(t, []string{"install", "hello"})
+	if code != 0 {
+		t.Fatalf("static install code = %d, stderr = %q", code, stderr)
+	}
+	if !strings.Contains(stdout, "installing hello 1.0.0\n") {
+		t.Fatalf("static install stdout = %q, want hello install", stdout)
+	}
+}
+
 func TestRunDoctor(t *testing.T) {
 	cfg := testCLIConfig(t)
 	if err := cfg.EnsureDirs(); err != nil {
@@ -421,6 +452,7 @@ func testCLIConfig(t *testing.T) config.Config {
 	root := filepath.Join(t.TempDir(), "dpm-root")
 	t.Setenv(config.EnvRoot, root)
 	t.Setenv(config.EnvRegistryURL, "")
+	t.Setenv(config.EnvRegistryStaticIndex, "")
 	cfg, err := config.FromRoot(root)
 	if err != nil {
 		t.Fatalf("FromRoot() error = %v", err)

@@ -123,7 +123,7 @@ func runSearch(cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: dpm search <query>")
 	}
-	reg, err := registry.New(cfg.RegistryDir)
+	reg, err := newRegistry(cfg)
 	if err != nil {
 		return err
 	}
@@ -142,7 +142,7 @@ func runInfo(cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: dpm info <name>")
 	}
-	reg, err := registry.New(cfg.RegistryDir)
+	reg, err := newRegistry(cfg)
 	if err != nil {
 		return err
 	}
@@ -187,7 +187,7 @@ func runInfo(cfg config.Config, args []string, stdout io.Writer) error {
 func optionalPackage(reg registry.Registry, name string) (registry.Package, error) {
 	pkg, err := reg.Package(name)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, registry.ErrPackageNotFound) {
 			return registry.Package{}, nil
 		}
 
@@ -195,6 +195,13 @@ func optionalPackage(reg registry.Registry, name string) (registry.Package, erro
 	}
 
 	return pkg, nil
+}
+
+func newRegistry(cfg config.Config) (registry.Registry, error) {
+	return registry.NewWithOptions(registry.Options{
+		Root:        cfg.RegistryDir,
+		StaticIndex: cfg.RegistryStaticIndex,
+	})
 }
 
 func formatSearchResult(match registry.SearchResult) string {
@@ -232,16 +239,20 @@ func suggestUpdateForRegistryMiss(cfg config.Config, name string, err error) err
 	if !errors.Is(err, registry.ErrPackageNotFound) {
 		return err
 	}
-	if !registryHasPackageDir(cfg.RegistryDir) {
+	if !registryHasPackageData(cfg.RegistryDir) {
 		return fmt.Errorf("%w\n\nregistry is missing or empty; run `dpm update` to fetch %s", err, cfg.RegistryURL)
 	}
 
 	return fmt.Errorf("%w\n\npackage %q was not found in the current registry; run `dpm update` to refresh %s", err, name, cfg.RegistryURL)
 }
 
-func registryHasPackageDir(registryDir string) bool {
+func registryHasPackageData(registryDir string) bool {
 	info, err := os.Stat(filepath.Join(registryDir, "packages"))
-	return err == nil && info.IsDir()
+	if err == nil && info.IsDir() {
+		return true
+	}
+	info, err = os.Stat(filepath.Join(registryDir, registry.StaticIndexDir, "packages.json"))
+	return err == nil && !info.IsDir()
 }
 
 func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
@@ -294,15 +305,17 @@ func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.
 
 func runRegistry(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: dpm registry <validate|prepare> [args]")
+		return fmt.Errorf("usage: dpm registry <validate|prepare|generate-index> [args]")
 	}
 	switch args[0] {
 	case "validate":
 		return runRegistryValidate(ctx, cfg, args[1:], stdout)
 	case "prepare":
 		return runRegistryPrepare(ctx, args[1:], stdout)
+	case "generate-index":
+		return runRegistryGenerateIndex(ctx, args[1:], stdout)
 	default:
-		return fmt.Errorf("usage: dpm registry <validate|prepare> [args]")
+		return fmt.Errorf("usage: dpm registry <validate|prepare|generate-index> [args]")
 	}
 }
 
@@ -340,6 +353,22 @@ func runRegistryValidate(ctx context.Context, _ config.Config, args []string, st
 	}
 
 	return fmt.Errorf("registry validation failed with %d issue(s)", len(report.Issues))
+}
+
+func runRegistryGenerateIndex(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: dpm registry generate-index <path>")
+	}
+	result, err := registry.GenerateIndex(ctx, registry.GenerateIndexOptions{Root: args[0]})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "generated index %s\n", result.IndexDir)
+	for _, file := range result.Files {
+		fmt.Fprintf(stdout, "metadata %s %s\n", relativePath(result.Root, file.Path), file.SHA256)
+	}
+
+	return nil
 }
 
 func runRegistryPrepare(ctx context.Context, args []string, stdout io.Writer) error {
@@ -472,15 +501,19 @@ func nextRegistryPrepareValue(args []string, i int, flag string) (string, int, e
 func relativePaths(root string, paths []string) []string {
 	result := make([]string, 0, len(paths))
 	for _, path := range paths {
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			result = append(result, path)
-			continue
-		}
-		result = append(result, filepath.ToSlash(rel))
+		result = append(result, relativePath(root, path))
 	}
 
 	return result
+}
+
+func relativePath(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return path
+	}
+
+	return filepath.ToSlash(rel)
 }
 
 func pathContains(dir string) bool {

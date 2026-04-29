@@ -32,6 +32,7 @@ dpm update
 dpm doctor
 dpm registry validate [--verify-artifacts] <path>
 dpm registry prepare [options] <path>
+dpm registry generate-index <path>
 ```
 
 The registry is currently a local checkout at `~/.dpm/registry` with package
@@ -50,6 +51,10 @@ artifact checksums.
 computes its SHA-256, suggests executable `bins` from the archive, writes
 package/version metadata, verifies a local install in a temporary `DPM_ROOT`,
 and prints a review diff.
+`dpm registry generate-index` builds generated static metadata under
+`index/`, including `packages.json`, per-package `versions.json`, normalized
+per-version manifests, and `.sha256` sidecars. Set
+`DPM_REGISTRY_STATIC_INDEX=1` to make client reads use that generated index.
 
 Example package preparation:
 

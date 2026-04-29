@@ -447,12 +447,39 @@ bumps.
 
 ## Milestone 8: Generated Static Index
 
-- [ ] Generate `index/packages.json`.
-- [ ] Generate per-package `versions.json`.
-- [ ] Generate per-version normalized manifests.
-- [ ] Add checksums for generated metadata.
-- [ ] Teach client to consume the static index behind a feature flag.
-- [ ] Keep Git as the authoring source.
+- [x] Generate `index/packages.json`.
+- [x] Generate per-package `versions.json`.
+- [x] Generate per-version normalized manifests.
+- [x] Add checksums for generated metadata.
+- [x] Teach client to consume the static index behind a feature flag.
+- [x] Keep Git as the authoring source.
+
+Milestone 8 command:
+
+```sh
+dpm registry generate-index <registry-path>
+```
+
+Generated static distribution lives under `index/`:
+
+```text
+index/
+  packages.json
+  packages.json.sha256
+  packages/<name>/versions.json
+  packages/<name>/versions.json.sha256
+  packages/<name>/versions/<version>/dpm.json
+  packages/<name>/versions/<version>/dpm.json.sha256
+```
+
+`packages.json` includes checksums for per-package version indexes, and each
+`versions.json` includes checksums for normalized per-version manifests. The
+source `packages/<name>/package.toml` and `versions/<version>/dpm.toml` layout
+remains the authoring source. Clients can read the generated index with:
+
+```sh
+DPM_REGISTRY_STATIC_INDEX=1 dpm install <name>
+```
 
 ## Milestone 9: Signed Snapshots
 

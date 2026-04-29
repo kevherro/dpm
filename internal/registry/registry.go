@@ -24,7 +24,14 @@ var (
 
 // Registry resolves package manifests from a local registry checkout.
 type Registry struct {
-	Root string
+	Root        string
+	StaticIndex bool
+}
+
+// Options configures a registry reader.
+type Options struct {
+	Root        string
+	StaticIndex bool
 }
 
 // SearchResult describes a package matched by registry search.
@@ -37,6 +44,12 @@ type SearchResult struct {
 
 // New returns a local registry rooted at root.
 func New(root string) (Registry, error) {
+	return NewWithOptions(Options{Root: root})
+}
+
+// NewWithOptions returns a local registry reader.
+func NewWithOptions(opts Options) (Registry, error) {
+	root := opts.Root
 	if root == "" {
 		return Registry{}, fmt.Errorf("registry root is empty")
 	}
@@ -46,7 +59,7 @@ func New(root string) (Registry, error) {
 		return Registry{}, fmt.Errorf("resolve registry root %q: %w", root, err)
 	}
 
-	return Registry{Root: filepath.Clean(absRoot)}, nil
+	return Registry{Root: filepath.Clean(absRoot), StaticIndex: opts.StaticIndex}, nil
 }
 
 // Resolve returns the newest non-yanked version of name.
@@ -76,6 +89,10 @@ func (r Registry) Resolve(name string) (manifest.Manifest, error) {
 
 // ResolveVersion returns a specific package manifest.
 func (r Registry) ResolveVersion(name, version string) (manifest.Manifest, error) {
+	if r.StaticIndex {
+		return r.staticResolveVersion(name, version)
+	}
+
 	path, err := r.ManifestPath(name, version)
 	if err != nil {
 		return manifest.Manifest{}, err
@@ -100,6 +117,10 @@ func (r Registry) ResolveVersion(name, version string) (manifest.Manifest, error
 
 // Versions lists available versions for name in ascending order.
 func (r Registry) Versions(name string) ([]string, error) {
+	if r.StaticIndex {
+		return r.staticVersions(name)
+	}
+
 	versionsDir, err := r.VersionsDir(name)
 	if err != nil {
 		return nil, err
@@ -131,6 +152,10 @@ func (r Registry) Versions(name string) ([]string, error) {
 
 // Search returns packages whose name or metadata contains query.
 func (r Registry) Search(query string) ([]SearchResult, error) {
+	if r.StaticIndex {
+		return r.staticSearch(query)
+	}
+
 	packagesDir := filepath.Join(r.Root, "packages")
 	entries, err := os.ReadDir(packagesDir)
 	if err != nil {

@@ -30,6 +30,10 @@ type Package struct {
 
 // Package reads package.toml for name.
 func (r Registry) Package(name string) (Package, error) {
+	if r.StaticIndex {
+		return r.staticPackage(name)
+	}
+
 	dir, err := r.PackageDir(name)
 	if err != nil {
 		return Package{}, err

@@ -80,7 +80,10 @@ func (i Installer) Install(ctx context.Context, cfg config.Config, name string) 
 	if err := cfg.EnsureDirs(); err != nil {
 		return InstallResult{}, err
 	}
-	reg, err := registry.New(cfg.RegistryDir)
+	reg, err := registry.NewWithOptions(registry.Options{
+		Root:        cfg.RegistryDir,
+		StaticIndex: cfg.RegistryStaticIndex,
+	})
 	if err != nil {
 		return InstallResult{}, err
 	}

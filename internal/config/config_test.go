@@ -14,6 +14,7 @@ func TestDefaultUsesHomeDPMRoot(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv(EnvRoot, "")
 	t.Setenv(EnvRegistryURL, "")
+	t.Setenv(EnvRegistryStaticIndex, "")
 
 	cfg, err := Default()
 	if err != nil {
@@ -31,6 +32,7 @@ func TestDefaultUsesDPMRootOverride(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "custom-root")
 	t.Setenv(EnvRoot, root)
 	t.Setenv(EnvRegistryURL, "")
+	t.Setenv(EnvRegistryStaticIndex, "")
 
 	cfg, err := Default()
 	if err != nil {
@@ -56,6 +58,22 @@ func TestDefaultUsesRegistryURLOverride(t *testing.T) {
 
 	if cfg.RegistryURL != url {
 		t.Fatalf("RegistryURL = %q, want %q", cfg.RegistryURL, url)
+	}
+}
+
+func TestDefaultUsesStaticRegistryFlag(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "custom-root")
+	t.Setenv(EnvRoot, root)
+	t.Setenv(EnvRegistryURL, "")
+	t.Setenv(EnvRegistryStaticIndex, "1")
+
+	cfg, err := Default()
+	if err != nil {
+		t.Fatalf("Default() error = %v", err)
+	}
+
+	if !cfg.RegistryStaticIndex {
+		t.Fatal("RegistryStaticIndex = false, want true")
 	}
 }
 
@@ -147,14 +165,15 @@ func assertLayout(t *testing.T, cfg Config, root string) {
 	t.Helper()
 
 	want := Config{
-		Root:         root,
-		BinDir:       filepath.Join(root, "bin"),
-		PkgsDir:      filepath.Join(root, "pkgs"),
-		DownloadsDir: filepath.Join(root, "downloads"),
-		CacheDir:     filepath.Join(root, "cache"),
-		RegistryDir:  filepath.Join(root, "registry"),
-		RegistryURL:  DefaultRegistryURL,
-		StateDir:     filepath.Join(root, "state"),
+		Root:                root,
+		BinDir:              filepath.Join(root, "bin"),
+		PkgsDir:             filepath.Join(root, "pkgs"),
+		DownloadsDir:        filepath.Join(root, "downloads"),
+		CacheDir:            filepath.Join(root, "cache"),
+		RegistryDir:         filepath.Join(root, "registry"),
+		RegistryURL:         DefaultRegistryURL,
+		RegistryStaticIndex: false,
+		StateDir:            filepath.Join(root, "state"),
 	}
 
 	if cfg != want {
