@@ -4,8 +4,11 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -284,6 +287,54 @@ func TestRunRegistryValidateVerifiesArtifacts(t *testing.T) {
 	}
 }
 
+func TestRunRegistryPrepare(t *testing.T) {
+	cfg := testCLIConfig(t)
+	writeCLIRegistryMetadata(t, cfg)
+	artifact := filepath.Join(t.TempDir(), "demo-1.0.0-darwin-arm64.tar.gz")
+	writeCLIPrepareArtifact(t, artifact, "demo-1.0.0/bin/demo")
+
+	code, stdout, stderr := runCLI(t, []string{
+		"registry", "prepare",
+		"--name", "demo",
+		"--version", "1.0.0",
+		"--url", "file://" + filepath.ToSlash(artifact),
+		"--summary", "Demo package",
+		"--homepage", "https://example.com/demo",
+		"--license", "MIT",
+		"--category", "demo",
+		cfg.RegistryDir,
+	})
+	if code != 0 {
+		t.Fatalf("registry prepare code = %d, stderr = %q", code, stderr)
+	}
+	for _, want := range []string{
+		"prepared demo 1.0.0\n",
+		"artifact file://" + filepath.ToSlash(artifact) + "\n",
+		"sha256 ",
+		"bins demo-1.0.0/bin/demo\n",
+		"verified install\n",
+		"files packages/demo/package.toml packages/demo/versions/1.0.0/dpm.toml\n",
+		"diff\n",
+		"diff --git a/packages/demo/package.toml b/packages/demo/package.toml\n",
+		`+bins = ["demo-1.0.0/bin/demo"]`,
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("registry prepare stdout = %q, want substring %q", stdout, want)
+		}
+	}
+	m, err := registry.New(cfg.RegistryDir)
+	if err != nil {
+		t.Fatalf("registry New() error = %v", err)
+	}
+	resolved, err := m.Resolve("demo")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if resolved.Version != "1.0.0" {
+		t.Fatalf("resolved version = %q, want 1.0.0", resolved.Version)
+	}
+}
+
 func TestRunDoctor(t *testing.T) {
 	cfg := testCLIConfig(t)
 	if err := cfg.EnsureDirs(); err != nil {
@@ -502,5 +553,37 @@ func writeRawFile(t *testing.T, path, contents string) {
 	}
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
+	}
+}
+
+func writeCLIPrepareArtifact(t *testing.T, path, bin string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	body := "#!/bin/sh\nprintf 'demo\\n'\n"
+	header := &tar.Header{
+		Name:     bin,
+		Typeflag: tar.TypeReg,
+		Mode:     0o755,
+		Size:     int64(len(body)),
+	}
+	if err := tw.WriteHeader(header); err != nil {
+		t.Fatalf("WriteHeader() error = %v", err)
+	}
+	if _, err := io.Copy(tw, strings.NewReader(body)); err != nil {
+		t.Fatalf("Copy() error = %v", err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("tar Close() error = %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip Close() error = %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("file Close() error = %v", err)
 	}
 }

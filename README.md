@@ -31,6 +31,7 @@ dpm info <name>
 dpm update
 dpm doctor
 dpm registry validate [--verify-artifacts] <path>
+dpm registry prepare [options] <path>
 ```
 
 The registry is currently a local checkout at `~/.dpm/registry` with package
@@ -45,6 +46,29 @@ while developing.
 `dpm info` shows package metadata plus the selected non-yanked version.
 `dpm registry validate` checks registry structure and can optionally verify
 artifact checksums.
+`dpm registry prepare` is a maintainer helper that fetches one artifact URL,
+computes its SHA-256, suggests executable `bins` from the archive, writes
+package/version metadata, verifies a local install in a temporary `DPM_ROOT`,
+and prints a review diff.
+
+Example package preparation:
+
+```sh
+go run ./cmd/dpm registry prepare \
+  --name ripgrep \
+  --version 15.1.0 \
+  --url https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-aarch64-apple-darwin.tar.gz \
+  --summary "Recursively search directories for a regex pattern" \
+  --homepage https://github.com/BurntSushi/ripgrep \
+  --license "MIT OR Unlicense" \
+  --category search \
+  --category cli \
+  /Users/kevin/Development/oss/dpm-registry
+```
+
+Use `--bin <path>` when the executable archive paths need to be declared
+manually. Use `--skip-install-verify` only when preparing metadata on a machine
+that cannot run the local install verification step.
 
 End-to-end `hello` demo:
 

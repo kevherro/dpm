@@ -14,6 +14,7 @@ import (
 
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/install"
+	"github.com/kevherro/dpm/internal/maintain"
 	"github.com/kevherro/dpm/internal/registry"
 	"github.com/kevherro/dpm/internal/state"
 )
@@ -293,13 +294,15 @@ func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.
 
 func runRegistry(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: dpm registry validate [--verify-artifacts] <path>")
+		return fmt.Errorf("usage: dpm registry <validate|prepare> [args]")
 	}
 	switch args[0] {
 	case "validate":
 		return runRegistryValidate(ctx, cfg, args[1:], stdout)
+	case "prepare":
+		return runRegistryPrepare(ctx, args[1:], stdout)
 	default:
-		return fmt.Errorf("usage: dpm registry validate [--verify-artifacts] <path>")
+		return fmt.Errorf("usage: dpm registry <validate|prepare> [args]")
 	}
 }
 
@@ -337,6 +340,147 @@ func runRegistryValidate(ctx context.Context, _ config.Config, args []string, st
 	}
 
 	return fmt.Errorf("registry validation failed with %d issue(s)", len(report.Issues))
+}
+
+func runRegistryPrepare(ctx context.Context, args []string, stdout io.Writer) error {
+	opts, err := parseRegistryPrepareArgs(args)
+	if err != nil {
+		return err
+	}
+	result, err := maintain.Prepare(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(stdout, "prepared %s %s\n", result.Name, result.Version)
+	fmt.Fprintf(stdout, "artifact %s\n", result.ArtifactURL)
+	fmt.Fprintf(stdout, "size %d\n", result.Size)
+	if result.ContentType != "" {
+		fmt.Fprintf(stdout, "content-type %s\n", result.ContentType)
+	}
+	fmt.Fprintf(stdout, "sha256 %s\n", result.SHA256)
+	fmt.Fprintf(stdout, "bins %s\n", strings.Join(result.Bins, " "))
+	if result.VerifiedInstall {
+		fmt.Fprintln(stdout, "verified install")
+	}
+	fmt.Fprintf(stdout, "files %s\n", strings.Join(relativePaths(opts.RegistryRoot, result.CreatedFiles), " "))
+	fmt.Fprintln(stdout, "diff")
+	fmt.Fprint(stdout, result.Diff)
+
+	return nil
+}
+
+func parseRegistryPrepareArgs(args []string) (maintain.PrepareOptions, error) {
+	var opts maintain.PrepareOptions
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--name":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.Name = value
+			i = next
+		case "--version":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.Version = value
+			i = next
+		case "--url":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.ArtifactURL = value
+			i = next
+		case "--summary":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.Summary = value
+			i = next
+		case "--homepage":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.Homepage = value
+			i = next
+		case "--license":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.License = value
+			i = next
+		case "--category":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.Categories = append(opts.Categories, value)
+			i = next
+		case "--dependency":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.Dependencies = append(opts.Dependencies, value)
+			i = next
+		case "--bin":
+			value, next, err := nextRegistryPrepareValue(args, i, arg)
+			if err != nil {
+				return maintain.PrepareOptions{}, err
+			}
+			opts.Bins = append(opts.Bins, value)
+			i = next
+		case "--skip-install-verify":
+			opts.SkipInstallVerify = true
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return maintain.PrepareOptions{}, fmt.Errorf("unknown registry prepare flag %s", arg)
+			}
+			if opts.RegistryRoot != "" {
+				return maintain.PrepareOptions{}, fmt.Errorf("usage: dpm registry prepare [options] <path>")
+			}
+			opts.RegistryRoot = arg
+		}
+	}
+	if opts.RegistryRoot == "" {
+		return maintain.PrepareOptions{}, fmt.Errorf("usage: dpm registry prepare [options] <path>")
+	}
+
+	return opts, nil
+}
+
+func nextRegistryPrepareValue(args []string, i int, flag string) (string, int, error) {
+	if i+1 >= len(args) {
+		return "", i, fmt.Errorf("%s requires a value", flag)
+	}
+	value := args[i+1]
+	if value == "" {
+		return "", i, fmt.Errorf("%s requires a non-empty value", flag)
+	}
+
+	return value, i + 1, nil
+}
+
+func relativePaths(root string, paths []string) []string {
+	result := make([]string, 0, len(paths))
+	for _, path := range paths {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			result = append(result, path)
+			continue
+		}
+		result = append(result, filepath.ToSlash(rel))
+	}
+
+	return result
 }
 
 func pathContains(dir string) bool {

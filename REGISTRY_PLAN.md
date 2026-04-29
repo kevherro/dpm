@@ -425,12 +425,25 @@ the network by default.
 
 ## Milestone 7: Package Maintenance Tooling
 
-- [ ] Add a maintainer helper to create/bump package manifests.
-- [ ] Fetch release asset metadata from a provided URL.
-- [ ] Compute SHA-256 automatically.
-- [ ] Inspect archive layout and suggest `bins`.
-- [ ] Run local install verification in a temporary `DPM_ROOT`.
-- [ ] Generate a ready-to-review registry diff.
+- [x] Add a maintainer helper to create/bump package manifests.
+- [x] Fetch release asset metadata from a provided URL.
+- [x] Compute SHA-256 automatically.
+- [x] Inspect archive layout and suggest `bins`.
+- [x] Run local install verification in a temporary `DPM_ROOT`.
+- [x] Generate a ready-to-review registry diff.
+
+Milestone 7 command:
+
+```sh
+dpm registry prepare [options] <registry-path>
+```
+
+The helper fetches one `file://` or `https://` artifact, computes its SHA-256,
+uses executable archive entries as default `bins`, writes `package.toml` when
+missing, writes a new `versions/<version>/dpm.toml`, validates the registry,
+verifies `dpm install <name>` against a temporary root, and prints a review diff
+for the generated files. Existing `package.toml` files are reused for version
+bumps.
 
 ## Milestone 8: Generated Static Index
 
