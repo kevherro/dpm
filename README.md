@@ -140,5 +140,6 @@ Troubleshooting:
   or rename the conflicting file, or run `dpm remove <name>` if the link belongs
   to an installed dpm package.
 
-This project is early and intentionally boring. The first milestone is a small
-end-to-end demo package, backed by real tests.
+This project is at `v0.1.0`: the core end-to-end flow works, and the remaining
+work is safety hardening, trusted distribution, and release productization. See
+[V1_PLAN.md](V1_PLAN.md) for the path to `v1.0.0`.
