@@ -108,7 +108,7 @@ func runHelp(args []string, stdout io.Writer) error {
 	case "update":
 		return printTopicHelp(stdout, args, "dpm update", "Clone or fast-forward the configured registry checkout.")
 	case "doctor":
-		return printTopicHelp(stdout, args, "dpm doctor", "Check dpm directories, PATH visibility, and registry revision state.")
+		return printTopicHelp(stdout, args, "dpm doctor", "Audit dpm layout, installed state, links, staging, lock, and registry integrity without repair.")
 	case "version":
 		return printTopicHelp(stdout, args, "dpm version [--verbose]", "Print dpm build version metadata.")
 	case "registry":
