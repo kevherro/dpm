@@ -112,6 +112,9 @@ func (r Registry) staticVersions(name string) ([]string, error) {
 	}
 	versions := make([]string, 0, len(index.Versions))
 	for _, version := range index.Versions {
+		if err := manifest.ValidateVersion(version.Version); err != nil {
+			return nil, fmt.Errorf("invalid static registry version %q for %s: %w", version.Version, name, err)
+		}
 		versions = append(versions, version.Version)
 	}
 	sortVersions(versions)
@@ -120,7 +123,7 @@ func (r Registry) staticVersions(name string) ([]string, error) {
 }
 
 func (r Registry) staticResolveVersion(name, version string) (manifest.Manifest, error) {
-	if err := validatePathPart("version", version); err != nil {
+	if err := manifest.ValidateVersion(version); err != nil {
 		return manifest.Manifest{}, err
 	}
 	index, err := r.loadStaticVersionsIndex(name)

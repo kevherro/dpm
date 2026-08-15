@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+go_version=1.26.2
+
+if command -v go >/dev/null && [ "$(go env GOVERSION)" = "go${go_version}" ]; then
+  exit 0
+fi
+
+archive="$(mktemp)"
+trap 'rm -f "$archive"' EXIT
+
+curl -fsSL "https://go.dev/dl/go${go_version}.linux-amd64.tar.gz" -o "$archive"
+rm -rf /usr/local/go
+tar -C /usr/local -xzf "$archive"
+ln -sf /usr/local/go/bin/go /usr/local/bin/go
+ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt

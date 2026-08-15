@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -36,13 +37,28 @@ type HelloFixture struct {
 func WriteHelloRegistry(t testing.TB, cfg config.Config) HelloFixture {
 	t.Helper()
 
-	artifactPath := filepath.Join(t.TempDir(), "hello-1.0.0-darwin-arm64.tar.gz")
+	artifactPath := filepath.Join(t.TempDir(), "hello-1.0.0-"+runtime.GOOS+"-"+runtime.GOARCH+".tar.gz")
 	writeHelloArtifact(t, artifactPath)
 	sum, err := checksum.FileSHA256(artifactPath)
 	if err != nil {
 		t.Fatalf("FileSHA256() error = %v", err)
 	}
 	url := "file://" + artifactPath
+	artifacts := `[[artifacts]]
+os = "darwin"
+arch = "arm64"
+url = "` + url + `"
+sha256 = "` + sum + `"
+`
+	if runtime.GOOS != "darwin" || runtime.GOARCH != "arm64" {
+		artifacts += `
+[[artifacts]]
+os = "` + runtime.GOOS + `"
+arch = "` + runtime.GOARCH + `"
+url = "` + url + `"
+sha256 = "` + sum + `"
+`
+	}
 
 	dir := filepath.Join(cfg.RegistryDir, "packages", HelloName, "versions", HelloVersion)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -53,12 +69,7 @@ name = "` + HelloName + `"
 version = "` + HelloVersion + `"
 dependencies = []
 
-[[artifacts]]
-os = "darwin"
-arch = "arm64"
-url = "` + url + `"
-sha256 = "` + sum + `"
-
+` + artifacts + `
 [install]
 bins = ["bin/hello"]
 `

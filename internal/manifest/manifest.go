@@ -162,8 +162,8 @@ func Validate(m Manifest) error {
 	if m.Version == "" {
 		return fmt.Errorf("manifest version is required")
 	}
-	if strings.ContainsAny(m.Version, `/\`) {
-		return fmt.Errorf("manifest version %q must not contain path separators", m.Version)
+	if err := ValidateVersion(m.Version); err != nil {
+		return fmt.Errorf("manifest %w", err)
 	}
 	if len(m.Artifacts) == 0 {
 		return fmt.Errorf("at least one artifact is required")

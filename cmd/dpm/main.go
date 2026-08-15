@@ -36,13 +36,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	case "version":
 		if err := runVersion(args[1:], stdout); err != nil {
 			printError(stderr, err)
-			return 1
+			return errorCode(err)
 		}
 		return 0
 	case "help":
 		if err := runHelp(args[1:], stdout); err != nil {
 			printError(stderr, err)
-			return 1
+			return errorCode(err)
 		}
 		return 0
 	case "-h", "--help":
@@ -80,7 +80,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	if runErr != nil {
 		printError(stderr, runErr)
-		return 1
+		return errorCode(runErr)
 	}
 
 	return 0
@@ -324,6 +324,12 @@ func formatSearchResult(match registry.SearchResult) string {
 func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 0 {
 		return fmt.Errorf("usage: dpm update")
+	}
+	if err := cfg.RequireClientMutation(); err != nil {
+		return err
+	}
+	if err := cfg.EnsureDirs(); err != nil {
+		return err
 	}
 	if err := cfg.RequireInsideRoot(cfg.RegistryDir); err != nil {
 		return err
@@ -733,4 +739,12 @@ func printUsage(w io.Writer) {
 
 func printError(w io.Writer, err error) {
 	fmt.Fprintf(w, "error: %v\n", err)
+}
+
+func errorCode(err error) int {
+	if strings.HasPrefix(err.Error(), "usage:") || strings.HasPrefix(err.Error(), "unknown help topic") {
+		return 2
+	}
+
+	return 1
 }

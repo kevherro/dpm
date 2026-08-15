@@ -133,22 +133,22 @@ Goal: make the v1 promise testable before changing implementation.
 
 Work:
 
-- [ ] Add a concise threat model containing the scope and exclusions above.
+- [x] Add a concise threat model containing the scope and exclusions above.
 - [ ] Freeze manifest and registry schema 1 semantics.
-- [ ] Restrict package versions to canonical numeric `MAJOR.MINOR.PATCH` for v1
+- [x] Restrict package versions to canonical numeric `MAJOR.MINOR.PATCH` for v1
       and replace the current loose comparison behavior with tests for that
       grammar and ordering.
-- [ ] Add `schema` to installed state and choose a tested `v0.1.0` migration or
+- [x] Add `schema` to installed state and choose a tested `v0.1.0` migration or
       explicit incompatibility path before the on-disk format freezes.
-- [ ] Define the root policy exactly: the default is canonical `~/.dpm`; a
+- [x] Define the root policy exactly: the default is canonical `~/.dpm`; a
       `DPM_ROOT` override must be a strict descendant of the canonical user home
       or canonical `os.TempDir()`; the root itself and managed children may not
       be symlinks. Client mutations invoked with effective UID 0 are refused.
-- [ ] Document exit codes: `0` success, `1` operational failure, `2` usage
+- [x] Document exit codes: `0` success, `1` operational failure, `2` usage
       failure.
-- [ ] Add failing outside-sentinel tests for symlinked `bin`, `pkgs`,
+- [x] Add failing outside-sentinel tests for symlinked `bin`, `pkgs`,
       `downloads`, `cache`, `registry`, and `state` directories.
-- [ ] Add failing crafted-state tests that claim the whole `pkgs` directory,
+- [x] Add failing crafted-state tests that claim the whole `pkgs` directory,
       another package prefix, another package bin, and an outside path.
 - [ ] Add failing concurrent reader/writer and lifecycle rollback tests before
       implementing the fixes.

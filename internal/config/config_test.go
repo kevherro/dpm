@@ -48,6 +48,30 @@ func TestDefaultUsesDPMRootOverride(t *testing.T) {
 	assertLayout(t, cfg, root)
 }
 
+func TestDefaultRejectsDPMRootOutsideHomeAndTemp(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(EnvRoot, filepath.Join(string(filepath.Separator), "var", "lib", "dpm-test"))
+
+	if _, err := Default(); err == nil {
+		t.Fatal("Default() error = nil, want root policy error")
+	}
+}
+
+func TestClientMutationRejectsEffectiveRoot(t *testing.T) {
+	cfg, err := FromRoot(filepath.Join(t.TempDir(), "dpm-root"))
+	if err != nil {
+		t.Fatalf("FromRoot() error = %v", err)
+	}
+
+	if err := cfg.requireClientMutation(0); err == nil {
+		t.Fatal("requireClientMutation(0) error = nil, want error")
+	}
+	if err := cfg.requireClientMutation(501); err != nil {
+		t.Fatalf("requireClientMutation(501) error = %v", err)
+	}
+}
+
 func TestDefaultUsesRegistryURLOverride(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "custom-root")
 	url := "file:///tmp/dpm-registry"
@@ -140,6 +164,68 @@ func TestEnsureDirsCreatesStandardLayout(t *testing.T) {
 		if !info.IsDir() {
 			t.Fatalf("%q is not a directory", dir)
 		}
+	}
+}
+
+func TestEnsureDirsRejectsManagedDirectorySymlinksBeforeMutation(t *testing.T) {
+	for _, name := range []string{"bin", "pkgs", "downloads", "cache", "registry", "state"} {
+		t.Run(name, func(t *testing.T) {
+			parent := t.TempDir()
+			root := filepath.Join(parent, "dpm-root")
+			outside := filepath.Join(parent, "outside")
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				t.Fatalf("MkdirAll(root) error = %v", err)
+			}
+			if err := os.MkdirAll(outside, 0o755); err != nil {
+				t.Fatalf("MkdirAll(outside) error = %v", err)
+			}
+			sentinel := filepath.Join(outside, "sentinel")
+			if err := os.WriteFile(sentinel, []byte("unchanged"), 0o644); err != nil {
+				t.Fatalf("WriteFile(sentinel) error = %v", err)
+			}
+			if err := os.Symlink(outside, filepath.Join(root, name)); err != nil {
+				t.Fatalf("Symlink() error = %v", err)
+			}
+			cfg, err := FromRoot(root)
+			if err != nil {
+				t.Fatalf("FromRoot() error = %v", err)
+			}
+
+			if err := cfg.EnsureDirs(); err == nil {
+				t.Fatal("EnsureDirs() error = nil, want symlink error")
+			}
+			got, err := os.ReadFile(sentinel)
+			if err != nil {
+				t.Fatalf("ReadFile(sentinel) error = %v", err)
+			}
+			if string(got) != "unchanged" {
+				t.Fatalf("sentinel = %q, want unchanged", got)
+			}
+			for _, child := range []string{"bin", "pkgs", "downloads", "cache", "registry", "state"} {
+				if child == name {
+					continue
+				}
+				if _, err := os.Lstat(filepath.Join(root, child)); !os.IsNotExist(err) {
+					t.Fatalf("managed child %s was mutated before rejection", child)
+				}
+			}
+		})
+	}
+}
+
+func TestFromRootRejectsRootSymlink(t *testing.T) {
+	parent := t.TempDir()
+	target := filepath.Join(parent, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	root := filepath.Join(parent, "dpm-root")
+	if err := os.Symlink(target, root); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	if _, err := FromRoot(root); err == nil {
+		t.Fatal("FromRoot() error = nil, want root symlink error")
 	}
 }
 

@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/kevherro/dpm/internal/manifest"
@@ -140,7 +139,7 @@ func (r Registry) Versions(name string) ([]string, error) {
 			continue
 		}
 		version := entry.Name()
-		if err := validatePathPart("version", version); err != nil {
+		if err := manifest.ValidateVersion(version); err != nil {
 			return nil, fmt.Errorf("invalid registry version directory %q for %s: %w", version, name, err)
 		}
 		versions = append(versions, version)
@@ -214,7 +213,7 @@ func (r Registry) ManifestPath(name, version string) (string, error) {
 	if err := validatePathPart("package", name); err != nil {
 		return "", err
 	}
-	if err := validatePathPart("version", version); err != nil {
+	if err := manifest.ValidateVersion(version); err != nil {
 		return "", err
 	}
 
@@ -275,34 +274,9 @@ func validatePathPart(kind, value string) error {
 }
 
 func sortVersions(versions []string) {
-	slices.SortFunc(versions, compareVersions)
+	slices.SortFunc(versions, manifest.CompareVersions)
 }
 
 func compareVersions(a, b string) int {
-	aParts := strings.Split(a, ".")
-	bParts := strings.Split(b, ".")
-	maxLen := max(len(aParts), len(bParts))
-	for i := range maxLen {
-		aPart, bPart := "", ""
-		if i < len(aParts) {
-			aPart = aParts[i]
-		}
-		if i < len(bParts) {
-			bPart = bParts[i]
-		}
-
-		aNum, aErr := strconv.Atoi(aPart)
-		bNum, bErr := strconv.Atoi(bPart)
-		if aErr == nil && bErr == nil {
-			if aNum != bNum {
-				return aNum - bNum
-			}
-			continue
-		}
-		if aPart != bPart {
-			return strings.Compare(aPart, bPart)
-		}
-	}
-
-	return 0
+	return manifest.CompareVersions(a, b)
 }

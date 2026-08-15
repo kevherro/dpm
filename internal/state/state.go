@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,7 +17,11 @@ import (
 	"github.com/kevherro/dpm/internal/checksum"
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/link"
+	"github.com/kevherro/dpm/internal/manifest"
 )
+
+// CurrentSchema is the supported installed-state schema.
+const CurrentSchema = 1
 
 var (
 	// ErrNotInstalled means a package has no installed state record.
@@ -27,6 +32,7 @@ var (
 
 // Record describes an installed package.
 type Record struct {
+	Schema       int            `json:"schema"`
 	Name         string         `json:"name"`
 	Version      string         `json:"version"`
 	Source       string         `json:"source"`
@@ -57,6 +63,9 @@ func New(cfg config.Config) Store {
 
 // Save writes record to state.
 func (s Store) Save(record Record) error {
+	if err := s.cfg.ValidateLayout(); err != nil {
+		return err
+	}
 	if err := s.validateRecord(record); err != nil {
 		return err
 	}
@@ -125,6 +134,9 @@ func (s Store) Get(name string) (Record, error) {
 	if err := dec.Decode(&record); err != nil {
 		return Record{}, fmt.Errorf("decode state record %s: %w", path, err)
 	}
+	if err := requireJSONEOF(dec); err != nil {
+		return Record{}, fmt.Errorf("decode state record %s: %w", path, err)
+	}
 	if err := s.validateRecord(record); err != nil {
 		return Record{}, fmt.Errorf("invalid state record %s: %w", path, err)
 	}
@@ -170,6 +182,9 @@ func (s Store) List() ([]Record, error) {
 
 // Remove deletes one installed package record.
 func (s Store) Remove(name string) error {
+	if err := s.cfg.ValidateLayout(); err != nil {
+		return err
+	}
 	path, err := s.recordPath(name)
 	if err != nil {
 		return err
@@ -185,6 +200,9 @@ func (s Store) Remove(name string) error {
 
 // SaveRegistrySnapshot writes the latest accepted signed registry snapshot.
 func (s Store) SaveRegistrySnapshot(snapshot RegistrySnapshot) error {
+	if err := s.cfg.ValidateLayout(); err != nil {
+		return err
+	}
 	if err := s.validateRegistrySnapshot(snapshot); err != nil {
 		return err
 	}
@@ -249,6 +267,9 @@ func (s Store) RegistrySnapshot() (RegistrySnapshot, error) {
 	if err := dec.Decode(&snapshot); err != nil {
 		return RegistrySnapshot{}, fmt.Errorf("decode registry snapshot state %s: %w", path, err)
 	}
+	if err := requireJSONEOF(dec); err != nil {
+		return RegistrySnapshot{}, fmt.Errorf("decode registry snapshot state %s: %w", path, err)
+	}
 	if err := s.validateRegistrySnapshot(snapshot); err != nil {
 		return RegistrySnapshot{}, fmt.Errorf("invalid registry snapshot state %s: %w", path, err)
 	}
@@ -291,30 +312,29 @@ func (s Store) recordPath(name string) (string, error) {
 }
 
 func (s Store) validateRecord(record Record) error {
+	if record.Schema != CurrentSchema {
+		return fmt.Errorf("state record schema %d is not supported; remove v0.1.0 state before using dpm v1", record.Schema)
+	}
 	if err := validateName(record.Name); err != nil {
 		return err
 	}
-	if record.Version == "" {
-		return fmt.Errorf("state record version is required")
-	}
-	if strings.ContainsAny(record.Version, `/\`) {
-		return fmt.Errorf("state record version %q must not contain path separators", record.Version)
+	if err := manifest.ValidateVersion(record.Version); err != nil {
+		return fmt.Errorf("state record %w", err)
 	}
 	if record.Source == "" {
 		return fmt.Errorf("state record source is required")
 	}
-	if record.SHA256 == "" {
-		return fmt.Errorf("state record sha256 is required")
+	if _, err := checksum.NormalizeSHA256(record.SHA256); err != nil {
+		return fmt.Errorf("state record sha256: %w", err)
 	}
-	if record.Prefix == "" {
-		return fmt.Errorf("state record prefix is required")
-	}
-	if err := s.cfg.RequireInsideRoot(record.Prefix); err != nil {
-		return err
+	wantPrefix := filepath.Join(s.cfg.PkgsDir, record.Name, record.Version)
+	if record.Prefix != wantPrefix {
+		return fmt.Errorf("state record prefix %s does not equal owned prefix %s", record.Prefix, wantPrefix)
 	}
 	if record.InstalledAt.IsZero() {
 		return fmt.Errorf("state record installed_at is required")
 	}
+	binNames := make(map[string]bool, len(record.Bins))
 	for _, bin := range record.Bins {
 		if bin.Name == "" {
 			return fmt.Errorf("state record bin name is required")
@@ -322,26 +342,53 @@ func (s Store) validateRecord(record Record) error {
 		if strings.ContainsAny(bin.Name, `/\`) {
 			return fmt.Errorf("state record bin name %q must not contain path separators", bin.Name)
 		}
+		if binNames[bin.Name] {
+			return fmt.Errorf("state record contains duplicate bin %q", bin.Name)
+		}
+		binNames[bin.Name] = true
 		if bin.Source == "" {
 			return fmt.Errorf("state record bin source is required")
 		}
-		if err := s.cfg.RequireInsideRoot(bin.Source); err != nil {
-			return err
+		if err := requireStrictlyInside(wantPrefix, bin.Source); err != nil {
+			return fmt.Errorf("state record bin source: %w", err)
 		}
-		if bin.Link == "" {
-			return fmt.Errorf("state record bin link is required")
-		}
-		if err := s.cfg.RequireInsideRoot(bin.Link); err != nil {
-			return err
-		}
-		if filepath.Dir(bin.Link) != s.cfg.BinDir {
-			return fmt.Errorf("state record bin link %s is not directly in %s", bin.Link, s.cfg.BinDir)
+		wantLink := filepath.Join(s.cfg.BinDir, bin.Name)
+		if bin.Link != wantLink {
+			return fmt.Errorf("state record bin link %s does not equal owned link %s", bin.Link, wantLink)
 		}
 	}
+	dependencies := make(map[string]bool, len(record.Dependencies))
 	for _, dep := range record.Dependencies {
 		if err := validateName(dep); err != nil {
 			return fmt.Errorf("invalid dependency %q: %w", dep, err)
 		}
+		if dependencies[dep] {
+			return fmt.Errorf("state record contains duplicate dependency %q", dep)
+		}
+		dependencies[dep] = true
+	}
+
+	return nil
+}
+
+func requireJSONEOF(dec *json.Decoder) error {
+	var trailing any
+	if err := dec.Decode(&trailing); errors.Is(err, io.EOF) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	return fmt.Errorf("unexpected trailing JSON value")
+}
+
+func requireStrictlyInside(root, path string) error {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return fmt.Errorf("compare %s to %s: %w", path, root, err)
+	}
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path %s is not inside %s", path, root)
 	}
 
 	return nil

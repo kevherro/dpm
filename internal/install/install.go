@@ -57,6 +57,9 @@ func Install(ctx context.Context, cfg config.Config, name string) (InstallResult
 
 // Remove removes name using installed state.
 func Remove(cfg config.Config, name string) (RemoveResult, error) {
+	if err := cfg.RequireClientMutation(); err != nil {
+		return RemoveResult{}, err
+	}
 	store := state.New(cfg)
 	record, err := store.Get(name)
 	if err != nil {
@@ -65,7 +68,8 @@ func Remove(cfg config.Config, name string) (RemoveResult, error) {
 	if err := link.RemoveBins(cfg, record.Bins); err != nil {
 		return RemoveResult{}, err
 	}
-	if err := removePrefix(cfg, record.Prefix); err != nil {
+	prefix := filepath.Join(cfg.PkgsDir, record.Name, record.Version)
+	if err := removePrefix(cfg, prefix); err != nil {
 		return RemoveResult{}, err
 	}
 	if err := store.Remove(name); err != nil {
@@ -77,6 +81,9 @@ func Remove(cfg config.Config, name string) (RemoveResult, error) {
 
 // Install installs name and its dependencies.
 func (i Installer) Install(ctx context.Context, cfg config.Config, name string) (InstallResult, error) {
+	if err := cfg.RequireClientMutation(); err != nil {
+		return InstallResult{}, err
+	}
 	if err := cfg.EnsureDirs(); err != nil {
 		return InstallResult{}, err
 	}
@@ -178,6 +185,7 @@ func (i Installer) installOne(ctx context.Context, cfg config.Config, reg regist
 	}
 
 	record := state.Record{
+		Schema:       state.CurrentSchema,
 		Name:         m.Name,
 		Version:      m.Version,
 		Source:       artifact.URL,

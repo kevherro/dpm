@@ -118,19 +118,27 @@ func TestSaveRejectsInvalidRecords(t *testing.T) {
 		name   string
 		mutate func(*Record)
 	}{
+		{name: "missing schema", mutate: func(r *Record) { r.Schema = 0 }},
 		{name: "empty name", mutate: func(r *Record) { r.Name = "" }},
 		{name: "path name", mutate: func(r *Record) { r.Name = "../hello" }},
 		{name: "empty version", mutate: func(r *Record) { r.Version = "" }},
 		{name: "path version", mutate: func(r *Record) { r.Version = "stable/1.0.0" }},
 		{name: "empty source", mutate: func(r *Record) { r.Source = "" }},
 		{name: "empty sha", mutate: func(r *Record) { r.SHA256 = "" }},
+		{name: "malformed sha", mutate: func(r *Record) { r.SHA256 = "not-a-digest" }},
+		{name: "whole pkgs prefix", mutate: func(r *Record) { r.Prefix = cfg.PkgsDir }},
+		{name: "another package prefix", mutate: func(r *Record) { r.Prefix = filepath.Join(cfg.PkgsDir, "other", r.Version) }},
 		{name: "outside prefix", mutate: func(r *Record) { r.Prefix = filepath.Join(t.TempDir(), "outside") }},
 		{name: "zero time", mutate: func(r *Record) { r.InstalledAt = time.Time{} }},
 		{name: "bad dependency", mutate: func(r *Record) { r.Dependencies = []string{"../dep"} }},
 		{name: "bad bin name", mutate: func(r *Record) { r.Bins[0].Name = "bin/hello" }},
 		{name: "outside bin source", mutate: func(r *Record) { r.Bins[0].Source = filepath.Join(t.TempDir(), "hello") }},
+		{name: "another package bin source", mutate: func(r *Record) { r.Bins[0].Source = filepath.Join(cfg.PkgsDir, "other", r.Version, "hello") }},
 		{name: "outside bin link", mutate: func(r *Record) { r.Bins[0].Link = filepath.Join(t.TempDir(), "hello") }},
+		{name: "another package bin link", mutate: func(r *Record) { r.Bins[0].Link = filepath.Join(cfg.BinDir, "other") }},
 		{name: "nested bin link", mutate: func(r *Record) { r.Bins[0].Link = filepath.Join(cfg.BinDir, "nested", "hello") }},
+		{name: "duplicate bins", mutate: func(r *Record) { r.Bins = append(r.Bins, r.Bins[0]) }},
+		{name: "duplicate dependencies", mutate: func(r *Record) { r.Dependencies = append(r.Dependencies, r.Dependencies[0]) }},
 	}
 
 	for _, tt := range tests {
@@ -179,6 +187,29 @@ func TestGetRejectsUnknownJSONFields(t *testing.T) {
 
 	if _, err := store.Get("hello"); err == nil {
 		t.Fatal("Get() error = nil, want error")
+	}
+}
+
+func TestGetRejectsTrailingJSON(t *testing.T) {
+	store, cfg := testStore(t)
+	record := testRecord(cfg, "hello", "1.0.0")
+	path, err := store.recordPath("hello")
+	if err != nil {
+		t.Fatalf("recordPath() error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatalf("Marshal() error = %v", err)
+	}
+	if err := os.WriteFile(path, append(data, []byte(`{"schema":1}`)...), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, err := store.Get("hello"); err == nil {
+		t.Fatal("Get() error = nil, want trailing JSON error")
 	}
 }
 
@@ -295,6 +326,7 @@ func testStore(t *testing.T) (Store, config.Config) {
 func testRecord(cfg config.Config, name, version string) Record {
 	prefix := filepath.Join(cfg.PkgsDir, name, version)
 	return Record{
+		Schema:  CurrentSchema,
 		Name:    name,
 		Version: version,
 		Source:  "file:///tmp/" + name + ".tar.gz",

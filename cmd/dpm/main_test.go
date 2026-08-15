@@ -79,6 +79,7 @@ func TestRunHelloEndToEnd(t *testing.T) {
 func TestRunList(t *testing.T) {
 	cfg := testCLIConfig(t)
 	record := state.Record{
+		Schema:  state.CurrentSchema,
 		Name:    "hello",
 		Version: "1.0.0",
 		Source:  "file:///tmp/hello.tar.gz",
@@ -221,8 +222,8 @@ func TestRunHelp(t *testing.T) {
 	}
 
 	code, _, stderr = runCLI(t, []string{"help", "bogus"})
-	if code != 1 {
-		t.Fatalf("help bogus code = %d, want 1", code)
+	if code != 2 {
+		t.Fatalf("help bogus code = %d, want 2", code)
 	}
 	if !strings.Contains(stderr, `unknown help topic "bogus"`) {
 		t.Fatalf("help bogus stderr = %q, want unknown topic", stderr)
@@ -596,16 +597,16 @@ func TestRunBadArgs(t *testing.T) {
 	testCLIConfig(t)
 
 	code, _, stderr := runCLI(t, []string{"install"})
-	if code != 1 {
-		t.Fatalf("install without args code = %d, want 1", code)
+	if code != 2 {
+		t.Fatalf("install without args code = %d, want 2", code)
 	}
 	if !strings.Contains(stderr, "usage: dpm install <name>") {
 		t.Fatalf("stderr = %q, want install usage", stderr)
 	}
 
 	code, _, stderr = runCLI(t, []string{"version", "--json"})
-	if code != 1 {
-		t.Fatalf("version bad arg code = %d, want 1", code)
+	if code != 2 {
+		t.Fatalf("version bad arg code = %d, want 2", code)
 	}
 	if !strings.Contains(stderr, "usage: dpm version [--verbose]") {
 		t.Fatalf("stderr = %q, want version usage", stderr)

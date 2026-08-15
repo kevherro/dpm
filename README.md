@@ -20,6 +20,10 @@ Principles:
 - isolated package prefixes under `~/.dpm/pkgs`
 - executable symlinks under `~/.dpm/bin`
 
+V1 supports macOS 14+ on Apple silicon. See [THREAT_MODEL.md](THREAT_MODEL.md)
+for the filesystem boundary, state compatibility, exclusions, and exit-code
+contract.
+
 Commands:
 
 ```sh

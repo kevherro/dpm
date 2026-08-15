@@ -20,9 +20,9 @@ var (
 
 // BinLink records one executable symlink managed by dpm.
 type BinLink struct {
-	Name   string
-	Source string
-	Link   string
+	Name   string `json:"name"`
+	Source string `json:"source"`
+	Link   string `json:"link"`
 }
 
 type plannedLink struct {
@@ -32,6 +32,9 @@ type plannedLink struct {
 
 // LinkBins links declared package binaries from prefix into cfg.BinDir.
 func LinkBins(cfg config.Config, prefix string, bins []string) ([]BinLink, error) {
+	if err := cfg.ValidateLayout(); err != nil {
+		return nil, err
+	}
 	prefix, err := cleanPrefix(cfg, prefix)
 	if err != nil {
 		return nil, err
@@ -81,6 +84,9 @@ func LinkBins(cfg config.Config, prefix string, bins []string) ([]BinLink, error
 
 // RemoveBins removes dpm-managed symlinks recorded in links.
 func RemoveBins(cfg config.Config, links []BinLink) error {
+	if err := cfg.ValidateLayout(); err != nil {
+		return err
+	}
 	for _, link := range links {
 		if err := cfg.RequireInsideRoot(link.Link); err != nil {
 			return err
