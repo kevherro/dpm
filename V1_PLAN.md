@@ -134,7 +134,7 @@ Goal: make the v1 promise testable before changing implementation.
 Work:
 
 - [x] Add a concise threat model containing the scope and exclusions above.
-- [ ] Freeze manifest and registry schema 1 semantics.
+- [x] Freeze manifest and registry schema 1 semantics.
 - [x] Restrict package versions to canonical numeric `MAJOR.MINOR.PATCH` for v1
       and replace the current loose comparison behavior with tests for that
       grammar and ordering.
@@ -167,24 +167,24 @@ containment.
 
 Work:
 
-- [ ] Canonicalize the root through its longest existing ancestor and validate
+- [x] Canonicalize the root through its longest existing ancestor and validate
       it against the M0 root rule.
-- [ ] Inspect every existing managed component with `Lstat`; reject symlinks and
+- [x] Inspect every existing managed component with `Lstat`; reject symlinks and
       non-directories before mutation.
-- [ ] Centralize a small safe-path API for canonical root validation, safe join,
+- [x] Centralize a small safe-path API for canonical root validation, safe join,
       real-parent containment, and exact owned-path checks.
-- [ ] Require a state prefix to equal `pkgs/<name>/<version>`, each bin source to
+- [x] Require a state prefix to equal `pkgs/<name>/<version>`, each bin source to
       be inside that exact prefix, and each link to equal `bin/<bin-name>`.
-- [ ] Derive deletion targets from validated names and versions. Never grant
+- [x] Derive deletion targets from validated names and versions. Never grant
       deletion authority merely because a JSON path is lexically inside the
       root.
-- [ ] Reject trailing state JSON and validate stored checksums, duplicate bins,
+- [x] Reject trailing state JSON and validate stored checksums, duplicate bins,
       and duplicate dependencies.
-- [ ] Preserve archive rejection of traversal, absolute/backslash paths,
+- [x] Preserve archive rejection of traversal, absolute/backslash paths,
       symlinks, hard links, special entries, and duplicate regular-file outputs.
-- [ ] Apply the same containment model to maintainer commands using their
+- [x] Apply the same containment model to maintainer commands using their
       explicit registry output root rather than `DPM_ROOT`.
-- [ ] Surface cleanup failures instead of silently discarding them.
+- [x] Surface cleanup failures instead of silently discarding them.
 
 Acceptance:
 
