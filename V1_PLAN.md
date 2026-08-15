@@ -348,7 +348,7 @@ Release work:
       `codesign --verify --strict` and `spctl --assess --type execute` before
       publishing. If release credentials are unavailable, publish RCs only; do
       not call an unsigned quarantined download v1 GA.
-- [ ] Test the exact packaged binary—not a second local build—through the
+- [x] Test the exact packaged binary—not a second local build—through the
       hermetic hello flow and the public ripgrep flow from a fresh root.
 - [ ] Add a protected annotated-tag workflow that refuses version mismatch,
       failed tests, failed signing/notarization, checksum mismatch, or missing

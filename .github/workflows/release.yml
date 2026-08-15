@@ -74,6 +74,13 @@ jobs:
           codesign --verify --strict --verbose=2 "$BIN"
           spctl --assess --type execute --verbose=2 "$BIN"
           "$BIN" version --verbose
+          ./scripts/smoke.sh "$BIN"
+          DPM_ROOT="$RUNNER_TEMP/ripgrep-root" "$BIN" update
+          DPM_ROOT="$RUNNER_TEMP/ripgrep-root" "$BIN" install ripgrep
+          DPM_ROOT="$RUNNER_TEMP/ripgrep-root" "$RUNNER_TEMP/ripgrep-root/bin/rg" --version
+          test "$(DPM_ROOT="$RUNNER_TEMP/ripgrep-root" "$BIN" list)" = "ripgrep 15.1.0"
+          test "$(DPM_ROOT="$RUNNER_TEMP/ripgrep-root" "$BIN" install ripgrep)" = $'ripgrep 15.1.0 already installed\ndone'
+          DPM_ROOT="$RUNNER_TEMP/ripgrep-root" "$BIN" remove ripgrep
           (cd dist && shasum -a 256 -c SHA256SUMS)
       - name: Publish GitHub release
         env:

@@ -23,6 +23,7 @@ DPM_TAG="v$version" DPM_OUT="$tmp/dpm-native" GOOS="$(go env GOOS)" GOARCH="$(go
 grep -Fx "version $version" "$tmp/version"
 grep -Fx "commit $commit" "$tmp/version"
 grep -Fx "date $date" "$tmp/version"
+"$repo/scripts/smoke.sh" "$tmp/dpm-native"
 
 DPM_DIST="$tmp/dist" "$repo/scripts/release.sh" >/dev/null
 archive="$tmp/dist/dpm_${version}_darwin_arm64.tar.gz"
