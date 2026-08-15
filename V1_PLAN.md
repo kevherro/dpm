@@ -336,11 +336,11 @@ Required client CI on macOS 14+ Apple silicon:
 - [ ] `go test -race -count=1 ./...` passes.
 - [ ] The hermetic hello lifecycle, outside-root sentinel suite, dependency
       rollback suite, concurrency suite, and registry activation suite pass.
-- [ ] The release target builds and its `version --verbose` metadata is tested.
+- [x] The release target builds and its `version --verbose` metadata is tested.
 
 Release work:
 
-- [ ] Make tag and `VERSION` agreement mandatory and build with `-trimpath` plus
+- [x] Make tag and `VERSION` agreement mandatory and build with `-trimpath` plus
       commit/date metadata derived from the tag commit.
 - [ ] Publish `dpm_1.0.0_darwin_arm64.tar.gz` containing `dpm`, `LICENSE`, and
       short install instructions, plus `SHA256SUMS`.
