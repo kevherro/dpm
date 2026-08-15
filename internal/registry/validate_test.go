@@ -34,6 +34,42 @@ func TestValidateAcceptsValidRegistry(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsMatchingGeneratedMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeValidationMetadata(t, root)
+	writeValidationPackage(t, root, "hello")
+	writeValidationManifest(t, root, validManifestSpec(t, root, "hello", "1.0.0"))
+	if _, err := GenerateIndex(context.Background(), GenerateIndexOptions{Root: root}); err != nil {
+		t.Fatalf("GenerateIndex() error = %v", err)
+	}
+
+	report, err := Validate(context.Background(), ValidateOptions{Root: root})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	if !report.Valid() {
+		t.Fatalf("Validate() issues = %#v, want valid", report.Issues)
+	}
+}
+
+func TestValidateReportsStaleGeneratedMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeValidationMetadata(t, root)
+	writeValidationPackage(t, root, "hello")
+	writeValidationManifest(t, root, validManifestSpec(t, root, "hello", "1.0.0"))
+	if _, err := GenerateIndex(context.Background(), GenerateIndexOptions{Root: root}); err != nil {
+		t.Fatalf("GenerateIndex() error = %v", err)
+	}
+	writeValidationPackage(t, root, "goodbye")
+	writeValidationManifest(t, root, validManifestSpec(t, root, "goodbye", "2.0.0"))
+
+	report, err := Validate(context.Background(), ValidateOptions{Root: root})
+	if err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	assertValidationIssue(t, report, "generated package names do not match source packages")
+}
+
 func TestValidateReportsRegistryMetadataError(t *testing.T) {
 	root := t.TempDir()
 	writeValidationPackage(t, root, "hello")

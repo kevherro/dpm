@@ -253,7 +253,7 @@ Client work:
 - [x] Preflight Git before creating or changing the registry directory. Missing
       Git gets an actionable error explaining the tested Apple Command Line
       Tools prerequisite.
-- [ ] Clone or fetch into a candidate directory beneath `DPM_ROOT` on the same
+- [x] Clone or fetch into a candidate directory beneath `DPM_ROOT` on the same
       filesystem. Validate the checkout root, registry/package/version schemas,
       dependency resolution, platform coverage, and generated metadata when
       present before activation.

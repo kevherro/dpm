@@ -7,12 +7,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -73,8 +75,93 @@ func (v *validator) validate(ctx context.Context) ValidationReport {
 	v.validateMetadata()
 	packages := v.validatePackages(ctx)
 	v.validateDependencies(packages)
+	v.validateGeneratedMetadata(packages)
 
 	return ValidationReport{Root: v.reg.Root, Issues: v.issues}
+}
+
+func (v *validator) validateGeneratedMetadata(packages map[string][]manifest.Manifest) {
+	indexDir := filepath.Join(v.reg.Root, StaticIndexDir)
+	info, err := os.Lstat(indexDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return
+	}
+	if err != nil {
+		v.add(StaticIndexDir, "inspect generated metadata: %v", err)
+		return
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		v.add(StaticIndexDir, "generated metadata is not a directory")
+		return
+	}
+
+	static := Registry{Root: v.reg.Root, StaticIndex: true}
+	index, err := static.loadStaticPackagesIndex()
+	if err != nil {
+		v.add(filepath.Join(StaticIndexDir, "packages.json"), "%v", err)
+		return
+	}
+	metadata, err := v.reg.Metadata()
+	if err == nil {
+		want := staticMetadata{Schema: metadata.Schema, Name: metadata.Name, Description: metadata.Description}
+		if index.Registry != want {
+			v.add(filepath.Join(StaticIndexDir, "packages.json"), "generated registry metadata does not match registry.toml")
+		}
+	}
+
+	names, err := sourcePackageNames(v.reg.Root)
+	if err != nil {
+		v.add(filepath.Join(StaticIndexDir, "packages.json"), "compare generated packages: %v", err)
+		return
+	}
+	generatedNames := make([]string, 0, len(index.Packages))
+	for _, pkg := range index.Packages {
+		generatedNames = append(generatedNames, pkg.Name)
+	}
+	slices.Sort(generatedNames)
+	if !slices.Equal(generatedNames, names) {
+		v.add(filepath.Join(StaticIndexDir, "packages.json"), "generated package names do not match source packages")
+	}
+
+	for _, name := range names {
+		sourcePackage, err := v.reg.Package(name)
+		if err != nil {
+			continue
+		}
+		generatedPackage, err := static.Package(name)
+		if err != nil {
+			v.add(filepath.Join(StaticIndexDir, "packages.json"), "load generated package %q: %v", name, err)
+			continue
+		}
+		if !reflect.DeepEqual(generatedPackage, sourcePackage) {
+			v.add(filepath.Join(StaticIndexDir, "packages.json"), "generated package %q does not match source metadata", name)
+		}
+
+		sourceVersions := make([]string, 0, len(packages[name]))
+		for _, m := range packages[name] {
+			sourceVersions = append(sourceVersions, m.Version)
+		}
+		sortVersions(sourceVersions)
+		generatedVersions, err := static.Versions(name)
+		if err != nil {
+			v.add(filepath.Join(StaticIndexDir, "packages", name, "versions.json"), "%v", err)
+			continue
+		}
+		if !slices.Equal(generatedVersions, sourceVersions) {
+			v.add(filepath.Join(StaticIndexDir, "packages", name, "versions.json"), "generated versions do not match source versions")
+			continue
+		}
+		for _, sourceManifest := range packages[name] {
+			generatedManifest, err := static.ResolveVersion(name, sourceManifest.Version)
+			if err != nil {
+				v.add(filepath.Join(StaticIndexDir, "packages", name, "versions", sourceManifest.Version, "dpm.json"), "%v", err)
+				continue
+			}
+			if !reflect.DeepEqual(generatedManifest, sourceManifest) {
+				v.add(filepath.Join(StaticIndexDir, "packages", name, "versions", sourceManifest.Version, "dpm.json"), "generated manifest does not match source manifest")
+			}
+		}
+	}
 }
 
 func (v *validator) validateMetadata() {
