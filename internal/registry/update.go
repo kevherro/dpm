@@ -262,7 +262,7 @@ func requireCleanCheckout(ctx context.Context, root string) error {
 }
 
 func registryRevision(ctx context.Context, root string) (string, error) {
-	rev, err := runGit(ctx, root, "rev-parse", "--short", "HEAD")
+	rev, err := runGit(ctx, root, "rev-parse", "HEAD")
 	if err != nil {
 		return "", fmt.Errorf("read registry revision %s: %w", root, err)
 	}

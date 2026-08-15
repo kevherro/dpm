@@ -30,6 +30,13 @@ func TestUpdateClonesMissingRegistry(t *testing.T) {
 	}
 	assertFileExists(t, filepath.Join(root, MetadataFile))
 	assertFileExists(t, filepath.Join(root, ".git"))
+	reg, err := New(root)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if reg.Revision != got.Revision || len(reg.Revision) != 40 {
+		t.Fatalf("registry revision = %q, want full update revision %q", reg.Revision, got.Revision)
+	}
 	assertNoUpdateStaging(t, root)
 }
 
@@ -160,7 +167,7 @@ func TestUpdateCandidateFailurePreservesActiveRegistry(t *testing.T) {
 	if _, err := Update(context.Background(), UpdateOptions{Root: root, URL: fileURL(source)}); err == nil {
 		t.Fatal("second Update() error = nil, want candidate validation error")
 	}
-	if got := git(t, root, "rev-parse", "--short", "HEAD"); got != first.Revision {
+	if got := git(t, root, "rev-parse", "HEAD"); got != first.Revision {
 		t.Fatalf("active revision = %s, want preserved %s", got, first.Revision)
 	}
 	assertNoUpdateStaging(t, root)
@@ -184,7 +191,7 @@ func TestUpdateCandidateCallbackFailurePreservesActiveRegistry(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "signature rejected") {
 		t.Fatalf("Update() error = %v, want callback rejection", err)
 	}
-	if got := git(t, root, "rev-parse", "--short", "HEAD"); got != first.Revision {
+	if got := git(t, root, "rev-parse", "HEAD"); got != first.Revision {
 		t.Fatalf("active revision = %s, want preserved %s", got, first.Revision)
 	}
 	assertNoUpdateStaging(t, root)
@@ -211,7 +218,7 @@ func TestUpdateFinalizationFailureRestoresActiveRegistry(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "state write failed") {
 		t.Fatalf("Update() error = %v, want finalization error", err)
 	}
-	if got := git(t, root, "rev-parse", "--short", "HEAD"); got != first.Revision {
+	if got := git(t, root, "rev-parse", "HEAD"); got != first.Revision {
 		t.Fatalf("active revision = %s, want restored %s", got, first.Revision)
 	}
 	assertNoUpdateStaging(t, root)

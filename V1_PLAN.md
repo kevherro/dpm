@@ -207,7 +207,7 @@ Work:
       `update` take the exclusive lock; `list`, `search`, `info`, and `doctor`
       take the appropriate shared state/registry lock. `help` and `version` do
       not need the root.
-- [ ] Introduce an immutable registry view identified by one Git revision and
+- [x] Introduce an immutable registry view identified by one Git revision and
       resolve the complete, de-duplicated dependency graph through it.
 - [x] Preflight cycles, missing dependencies, platform artifacts, installed
       version conflicts, duplicate bin names, and existing bin ownership before
@@ -261,7 +261,7 @@ Client work:
       the exclusive registry lock. On any returned error, restore or retain the
       previous checkout as active; interrupted swaps are detected before the
       next registry read.
-- [ ] Bind `install`, `search`, and `info` to one immutable active revision for
+- [x] Bind `install`, `search`, and `info` to one immutable active revision for
       the duration of the command.
 - [x] Move update/activation policy out of `cmd/dpm`; keep CLI code responsible
       for parsing, presentation, and exit status.

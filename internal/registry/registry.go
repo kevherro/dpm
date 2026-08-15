@@ -4,6 +4,7 @@
 package registry
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -25,6 +26,7 @@ var (
 type Registry struct {
 	Root        string
 	StaticIndex bool
+	Revision    string
 }
 
 // Options configures a registry reader.
@@ -62,8 +64,20 @@ func NewWithOptions(opts Options) (Registry, error) {
 	if err := DetectInterruptedUpdate(absRoot); err != nil {
 		return Registry{}, err
 	}
+	revision := ""
+	if _, err := os.Lstat(filepath.Join(absRoot, ".git")); err == nil {
+		if err := requireGitCheckout(context.Background(), absRoot); err != nil {
+			return Registry{}, err
+		}
+		revision, err = registryRevision(context.Background(), absRoot)
+		if err != nil {
+			return Registry{}, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Registry{}, fmt.Errorf("inspect registry revision %s: %w", absRoot, err)
+	}
 
-	return Registry{Root: absRoot, StaticIndex: opts.StaticIndex}, nil
+	return Registry{Root: absRoot, StaticIndex: opts.StaticIndex, Revision: revision}, nil
 }
 
 // Resolve returns the newest non-yanked version of name.
