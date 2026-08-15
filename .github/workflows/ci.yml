@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify Apple silicon runner
+        run: test "$(uname -m)" = arm64
+      - name: Format
+        run: test -z "$(gofmt -d -s .)"
+      - name: Test
+        run: go test -count=1 ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Race test
+        run: go test -race -count=1 ./...
+      - name: Release archive target
+        run: ./scripts/release_test.sh

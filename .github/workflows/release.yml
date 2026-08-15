@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: [v*]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Require Apple silicon and annotated matching tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          test "$(uname -m)" = arm64
+          test "$(git cat-file -t "refs/tags/$TAG")" = tag
+          test "$TAG" = "v$(tr -d '[:space:]' < VERSION)"
+          test "$(git rev-list -n 1 "$TAG")" = "$GITHUB_SHA"
+      - name: Verify source
+        run: |
+          test -z "$(gofmt -d -s .)"
+          go test -count=1 ./...
+          go vet ./...
+          go test -race -count=1 ./...
+      - name: Build archive
+        run: ./scripts/release.sh
+      - name: Import Developer ID certificate
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          test -n "$CERTIFICATE_BASE64"
+          KEYCHAIN="$RUNNER_TEMP/release.keychain-db"
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p temporary "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p temporary "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k temporary "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+      - name: Sign and notarize exact binary
+        env:
+          SIGN_IDENTITY: ${{ secrets.APPLE_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          DIR="dist/dpm_${VERSION}_darwin_arm64"
+          codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$DIR/dpm"
+          codesign --verify --strict --verbose=2 "$DIR/dpm"
+          ditto -c -k --keepParent "$DIR/dpm" "$RUNNER_TEMP/dpm.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/dpm.zip" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
+          xcrun stapler staple "$DIR/dpm"
+          rm "dist/dpm_${VERSION}_darwin_arm64.tar.gz" dist/SHA256SUMS
+          tar -C dist -czf "dist/dpm_${VERSION}_darwin_arm64.tar.gz" "dpm_${VERSION}_darwin_arm64"
+          (cd dist && shasum -a 256 "dpm_${VERSION}_darwin_arm64.tar.gz" > SHA256SUMS)
+      - name: Verify exact packaged binary
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          mkdir "$RUNNER_TEMP/extracted"
+          tar -C "$RUNNER_TEMP/extracted" -xzf "dist/dpm_${VERSION}_darwin_arm64.tar.gz"
+          BIN="$RUNNER_TEMP/extracted/dpm_${VERSION}_darwin_arm64/dpm"
+          codesign --verify --strict --verbose=2 "$BIN"
+          spctl --assess --type execute --verbose=2 "$BIN"
+          "$BIN" version --verbose
+          (cd dist && shasum -a 256 -c SHA256SUMS)
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.tar.gz dist/SHA256SUMS --verify-tag --generate-notes

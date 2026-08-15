@@ -1,16 +1,12 @@
+#!/usr/bin/env bash
 # Copyright (c) 2026 Kevin Herro
 # SPDX-License-Identifier: MIT
 
-#!/usr/bin/env bash
-
-set -e
+set -euo pipefail
 set -x
 
-# Packages that have any tests.
-PKG=$(go list -f '{{if .TestGoFiles}} {{.ImportPath}} {{end}}' ./...)
-
-go test $PKG
-
-go vet -all ./...
-
-gofmt -d -s .
+test -z "$(gofmt -d -s .)"
+go test -count=1 ./...
+go vet ./...
+go test -race -count=1 ./...
+./scripts/release_test.sh
