@@ -150,7 +150,7 @@ Work:
       `downloads`, `cache`, `registry`, and `state` directories.
 - [x] Add failing crafted-state tests that claim the whole `pkgs` directory,
       another package prefix, another package bin, and an outside path.
-- [ ] Add failing concurrent reader/writer and lifecycle rollback tests before
+- [x] Add failing concurrent reader/writer and lifecycle rollback tests before
       implementing the fixes.
 
 Exit criteria:

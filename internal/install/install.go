@@ -23,11 +23,27 @@ import (
 
 // Installer installs registry packages into a configured dpm root.
 type Installer struct {
-	Fetcher ArtifactFetcher
-	Now     func() time.Time
-	GOOS    string
-	GOARCH  string
+	Fetcher       ArtifactFetcher
+	Now           func() time.Time
+	GOOS          string
+	GOARCH        string
+	hook          lifecycleHook
+	cleanupBins   func(config.Config, []link.BinLink) error
+	cleanupPrefix func(config.Config, string) error
 }
+
+type lifecyclePoint string
+
+const (
+	afterPrefixCommit lifecyclePoint = "after-prefix-commit"
+	afterLinksCommit  lifecyclePoint = "after-links-commit"
+	beforeStateCommit lifecyclePoint = "before-state-commit"
+	afterStateCommit  lifecyclePoint = "after-state-commit"
+	afterRemoveBins   lifecyclePoint = "after-remove-bins"
+	afterRemovePrefix lifecyclePoint = "after-remove-prefix"
+)
+
+type lifecycleHook func(lifecyclePoint, string) error
 
 // InstallResult reports packages handled during an install.
 type InstallResult struct {
@@ -57,6 +73,10 @@ func Install(ctx context.Context, cfg config.Config, name string) (InstallResult
 
 // Remove removes name using installed state.
 func Remove(cfg config.Config, name string) (RemoveResult, error) {
+	return remove(cfg, name, nil)
+}
+
+func remove(cfg config.Config, name string, hook lifecycleHook) (RemoveResult, error) {
 	if err := cfg.RequireClientMutation(); err != nil {
 		return RemoveResult{}, err
 	}
@@ -68,8 +88,14 @@ func Remove(cfg config.Config, name string) (RemoveResult, error) {
 	if err := link.RemoveBins(cfg, record.Bins); err != nil {
 		return RemoveResult{}, err
 	}
+	if err := runLifecycleHook(hook, afterRemoveBins, name); err != nil {
+		return RemoveResult{}, err
+	}
 	prefix := filepath.Join(cfg.PkgsDir, record.Name, record.Version)
 	if err := removePrefix(cfg, prefix); err != nil {
+		return RemoveResult{}, err
+	}
+	if err := runLifecycleHook(hook, afterRemovePrefix, name); err != nil {
 		return RemoveResult{}, err
 	}
 	if err := store.Remove(name); err != nil {
@@ -177,10 +203,21 @@ func (i Installer) installOne(ctx context.Context, cfg config.Config, reg regist
 		return fmt.Errorf("install package prefix %s: %w", prefix, err)
 	}
 	removeStaging = false
+	if err := runLifecycleHook(i.hook, afterPrefixCommit, name); err != nil {
+		return err
+	}
 
 	links, err := link.LinkBins(cfg, prefix, m.Install.Bins)
 	if err != nil {
-		_ = removePrefix(cfg, prefix)
+		_ = i.removePrefix(cfg, prefix)
+		return err
+	}
+	if err := runLifecycleHook(i.hook, afterLinksCommit, name); err != nil {
+		return err
+	}
+	if err := runLifecycleHook(i.hook, beforeStateCommit, name); err != nil {
+		_ = i.removeBins(cfg, links)
+		_ = i.removePrefix(cfg, prefix)
 		return err
 	}
 
@@ -196,8 +233,11 @@ func (i Installer) installOne(ctx context.Context, cfg config.Config, reg regist
 		InstalledAt:  i.now().UTC().Round(0),
 	}
 	if err := store.Save(record); err != nil {
-		_ = link.RemoveBins(cfg, links)
-		_ = removePrefix(cfg, prefix)
+		_ = i.removeBins(cfg, links)
+		_ = i.removePrefix(cfg, prefix)
+		return err
+	}
+	if err := runLifecycleHook(i.hook, afterStateCommit, name); err != nil {
 		return err
 	}
 
@@ -209,6 +249,33 @@ func (i Installer) installOne(ctx context.Context, cfg config.Config, reg regist
 		DownloadedPath: downloadedPath,
 		Links:          links,
 	})
+
+	return nil
+}
+
+func (i Installer) removeBins(cfg config.Config, bins []link.BinLink) error {
+	if i.cleanupBins != nil {
+		return i.cleanupBins(cfg, bins)
+	}
+
+	return link.RemoveBins(cfg, bins)
+}
+
+func (i Installer) removePrefix(cfg config.Config, prefix string) error {
+	if i.cleanupPrefix != nil {
+		return i.cleanupPrefix(cfg, prefix)
+	}
+
+	return removePrefix(cfg, prefix)
+}
+
+func runLifecycleHook(hook lifecycleHook, point lifecyclePoint, name string) error {
+	if hook == nil {
+		return nil
+	}
+	if err := hook(point, name); err != nil {
+		return fmt.Errorf("%s for %s: %w", point, name, err)
+	}
 
 	return nil
 }
