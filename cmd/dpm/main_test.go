@@ -720,6 +720,7 @@ func newCLIGitRegistry(t *testing.T) string {
 	requireCLIGit(t)
 
 	root := filepath.Join(t.TempDir(), "source-registry")
+	writeRawFile(t, filepath.Join(root, "packages", ".gitkeep"), "")
 	writeRawFile(t, filepath.Join(root, "registry.toml"), `schema = 1
 name = "dpm-core"
 description = "Test registry"

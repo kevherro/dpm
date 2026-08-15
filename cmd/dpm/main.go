@@ -348,14 +348,23 @@ func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.
 	if err := cfg.RequireInsideRoot(cfg.RegistryDir); err != nil {
 		return err
 	}
+	var snapshot state.RegistrySnapshot
+	verified := false
 	result, err := registry.Update(ctx, registry.UpdateOptions{
 		Root: cfg.RegistryDir,
 		URL:  cfg.RegistryURL,
+		ValidateCandidate: func(root string) error {
+			var err error
+			snapshot, verified, err = verifyRegistrySnapshot(cfg, root)
+			return err
+		},
+		AfterActivate: func() error {
+			if !verified {
+				return nil
+			}
+			return state.New(cfg).SaveRegistrySnapshot(snapshot)
+		},
 	})
-	if err != nil {
-		return err
-	}
-	snapshot, verified, err := verifyUpdatedRegistrySnapshot(cfg)
 	if err != nil {
 		return err
 	}
@@ -368,7 +377,7 @@ func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.
 	return nil
 }
 
-func verifyUpdatedRegistrySnapshot(cfg config.Config) (state.RegistrySnapshot, bool, error) {
+func verifyRegistrySnapshot(cfg config.Config, root string) (state.RegistrySnapshot, bool, error) {
 	keys, err := registry.ParsePublicKeys(cfg.RegistryPublicKeys)
 	if err != nil {
 		return state.RegistrySnapshot{}, false, err
@@ -376,7 +385,7 @@ func verifyUpdatedRegistrySnapshot(cfg config.Config) (state.RegistrySnapshot, b
 	if len(keys) == 0 {
 		return state.RegistrySnapshot{}, false, nil
 	}
-	verified, err := registry.VerifySnapshot(cfg.RegistryDir, keys)
+	verified, err := registry.VerifySnapshot(root, keys)
 	if err != nil {
 		return state.RegistrySnapshot{}, false, err
 	}
@@ -399,10 +408,6 @@ func verifyUpdatedRegistrySnapshot(cfg config.Config) (state.RegistrySnapshot, b
 		KeyID:      verified.KeyID,
 		VerifiedAt: time.Now().UTC().Round(0),
 	}
-	if err := store.SaveRegistrySnapshot(snapshot); err != nil {
-		return state.RegistrySnapshot{}, false, err
-	}
-
 	return snapshot, true, nil
 }
 

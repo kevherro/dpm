@@ -250,22 +250,22 @@ Client work:
 
 - [x] Change the default URL to the anonymous HTTPS Git URL
       `https://github.com/kevherro/dpm-registry.git`.
-- [ ] Preflight Git before creating or changing the registry directory. Missing
+- [x] Preflight Git before creating or changing the registry directory. Missing
       Git gets an actionable error explaining the tested Apple Command Line
       Tools prerequisite.
 - [ ] Clone or fetch into a candidate directory beneath `DPM_ROOT` on the same
       filesystem. Validate the checkout root, registry/package/version schemas,
       dependency resolution, platform coverage, and generated metadata when
       present before activation.
-- [ ] Activate with a recoverable old/candidate rename protocol while holding
+- [x] Activate with a recoverable old/candidate rename protocol while holding
       the exclusive registry lock. On any returned error, restore or retain the
       previous checkout as active; interrupted swaps are detected before the
       next registry read.
 - [ ] Bind `install`, `search`, and `info` to one immutable active revision for
       the duration of the command.
-- [ ] Move update/activation policy out of `cmd/dpm`; keep CLI code responsible
+- [x] Move update/activation policy out of `cmd/dpm`; keep CLI code responsible
       for parsing, presentation, and exit status.
-- [ ] If optional signed-snapshot verification is configured, perform it on the
+- [x] If optional signed-snapshot verification is configured, perform it on the
       candidate before activation. Do not make embedded keys or signatures a v1
       prerequisite.
 

@@ -22,8 +22,10 @@ const (
 
 // UpdateOptions configures a Git-backed registry update.
 type UpdateOptions struct {
-	Root string
-	URL  string
+	Root              string
+	URL               string
+	ValidateCandidate func(string) error
+	AfterActivate     func() error
 }
 
 // UpdateResult reports what dpm update changed.
@@ -36,6 +38,9 @@ type UpdateResult struct {
 
 // Update clones or fast-forwards a Git-backed registry checkout.
 func Update(ctx context.Context, opts UpdateOptions) (UpdateResult, error) {
+	if _, err := exec.LookPath("git"); err != nil {
+		return UpdateResult{}, fmt.Errorf("Git is required for dpm update; install the Xcode Command Line Tools with `xcode-select --install`: %w", err)
+	}
 	root, err := cleanUpdateRoot(opts.Root)
 	if err != nil {
 		return UpdateResult{}, err
@@ -43,41 +48,146 @@ func Update(ctx context.Context, opts UpdateOptions) (UpdateResult, error) {
 	if opts.URL == "" {
 		return UpdateResult{}, fmt.Errorf("registry url is empty")
 	}
+	if err := DetectInterruptedUpdate(root); err != nil {
+		return UpdateResult{}, err
+	}
 
-	info, err := os.Stat(root)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return cloneRegistry(ctx, root, opts.URL)
+	action := UpdateCloned
+	active := false
+	info, err := os.Lstat(root)
+	if err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return UpdateResult{}, fmt.Errorf("registry %s is not a managed directory", root)
 		}
+		empty, err := isEmptyDir(root)
+		if err != nil {
+			return UpdateResult{}, err
+		}
+		if !empty {
+			if err := requireGitCheckout(ctx, root); err != nil {
+				return UpdateResult{}, err
+			}
+			if err := requireCleanCheckout(ctx, root); err != nil {
+				return UpdateResult{}, err
+			}
+			action = UpdatePulled
+		}
+		active = true
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return UpdateResult{}, fmt.Errorf("inspect registry %s: %w", root, err)
+	}
 
-		return UpdateResult{}, fmt.Errorf("stat registry %s: %w", root, err)
+	parent := filepath.Dir(root)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return UpdateResult{}, fmt.Errorf("create registry parent %s: %w", parent, err)
 	}
-	if !info.IsDir() {
-		return UpdateResult{}, fmt.Errorf("registry %s is not a directory", root)
-	}
-	empty, err := isEmptyDir(root)
+	candidate, err := vacantTempPath(parent, ".registry-candidate-*")
 	if err != nil {
 		return UpdateResult{}, err
 	}
-	if empty {
-		return cloneRegistry(ctx, root, opts.URL)
+	removeCandidate := true
+	defer func() {
+		if removeCandidate {
+			_ = os.RemoveAll(candidate)
+		}
+	}()
+	if _, err := runGit(ctx, "", "clone", "--", opts.URL, candidate); err != nil {
+		return UpdateResult{}, fmt.Errorf("clone registry candidate from %s: %w", opts.URL, err)
 	}
-	if err := requireGitCheckout(ctx, root); err != nil {
-		return UpdateResult{}, err
+	report, err := Validate(ctx, ValidateOptions{Root: candidate})
+	if err != nil {
+		return UpdateResult{}, fmt.Errorf("validate registry candidate: %w", err)
 	}
-	if err := requireCleanCheckout(ctx, root); err != nil {
-		return UpdateResult{}, err
+	if !report.Valid() {
+		return UpdateResult{}, fmt.Errorf("registry candidate is invalid: %s: %s", report.Issues[0].Path, report.Issues[0].Message)
 	}
-	if _, err := runGit(ctx, root, "pull", "--ff-only"); err != nil {
-		return UpdateResult{}, fmt.Errorf("pull registry %s: %w", root, err)
+	if opts.ValidateCandidate != nil {
+		if err := opts.ValidateCandidate(candidate); err != nil {
+			return UpdateResult{}, fmt.Errorf("validate registry candidate: %w", err)
+		}
 	}
-
-	rev, err := registryRevision(ctx, root)
+	rev, err := registryRevision(ctx, candidate)
 	if err != nil {
 		return UpdateResult{}, err
 	}
 
-	return UpdateResult{Root: root, URL: opts.URL, Action: UpdatePulled, Revision: rev}, nil
+	backup := ""
+	if active {
+		backup, err = vacantTempPath(parent, ".registry-previous-*")
+		if err != nil {
+			return UpdateResult{}, err
+		}
+		if err := os.Rename(root, backup); err != nil {
+			return UpdateResult{}, fmt.Errorf("move active registry aside: %w", err)
+		}
+	}
+	if err := os.Rename(candidate, root); err != nil {
+		if backup != "" {
+			return UpdateResult{}, errors.Join(fmt.Errorf("activate registry candidate: %w", err), restoreRegistryBackup(root, backup))
+		}
+		return UpdateResult{}, fmt.Errorf("activate registry candidate: %w", err)
+	}
+	if opts.AfterActivate != nil {
+		if err := opts.AfterActivate(); err != nil {
+			rollbackErr := os.Rename(root, candidate)
+			if rollbackErr == nil && backup != "" {
+				rollbackErr = restoreRegistryBackup(root, backup)
+			}
+			return UpdateResult{}, errors.Join(fmt.Errorf("finalize registry activation: %w", err), rollbackErr)
+		}
+	}
+	removeCandidate = false
+	if backup != "" {
+		if err := os.RemoveAll(backup); err != nil {
+			return UpdateResult{}, fmt.Errorf("remove previous registry backup %s: %w", backup, err)
+		}
+	}
+
+	return UpdateResult{Root: root, URL: opts.URL, Action: action, Revision: rev}, nil
+}
+
+// DetectInterruptedUpdate refuses registry reads while swap evidence remains.
+func DetectInterruptedUpdate(root string) error {
+	parent := filepath.Dir(root)
+	for _, pattern := range []string{".registry-candidate-*", ".registry-previous-*"} {
+		matches, err := filepath.Glob(filepath.Join(parent, pattern))
+		if err != nil {
+			return fmt.Errorf("inspect registry update staging: %w", err)
+		}
+		for _, match := range matches {
+			if filepath.Clean(match) == filepath.Clean(root) {
+				continue
+			}
+			return fmt.Errorf("interrupted registry update evidence at %s; inspect it and run `dpm doctor`", match)
+		}
+	}
+
+	return nil
+}
+
+func vacantTempPath(parent, pattern string) (string, error) {
+	path, err := os.MkdirTemp(parent, pattern)
+	if err != nil {
+		return "", fmt.Errorf("reserve registry staging path: %w", err)
+	}
+	if err := os.Remove(path); err != nil {
+		return "", fmt.Errorf("prepare registry staging path %s: %w", path, err)
+	}
+
+	return path, nil
+}
+
+func restoreRegistryBackup(root, backup string) error {
+	if _, err := os.Lstat(root); err == nil {
+		return fmt.Errorf("cannot restore registry backup while %s exists", root)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect failed registry activation %s: %w", root, err)
+	}
+	if err := os.Rename(backup, root); err != nil {
+		return fmt.Errorf("restore previous registry %s: %w", root, err)
+	}
+
+	return nil
 }
 
 func isEmptyDir(root string) (bool, error) {
@@ -87,21 +197,6 @@ func isEmptyDir(root string) (bool, error) {
 	}
 
 	return len(entries) == 0, nil
-}
-
-func cloneRegistry(ctx context.Context, root, url string) (UpdateResult, error) {
-	if err := os.MkdirAll(filepath.Dir(root), 0o755); err != nil {
-		return UpdateResult{}, fmt.Errorf("create registry parent %s: %w", filepath.Dir(root), err)
-	}
-	if _, err := runGit(ctx, "", "clone", url, root); err != nil {
-		return UpdateResult{}, fmt.Errorf("clone registry %s into %s: %w", url, root, err)
-	}
-	rev, err := registryRevision(ctx, root)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-
-	return UpdateResult{Root: root, URL: url, Action: UpdateCloned, Revision: rev}, nil
 }
 
 func cleanUpdateRoot(root string) (string, error) {

@@ -58,7 +58,12 @@ func NewWithOptions(opts Options) (Registry, error) {
 		return Registry{}, fmt.Errorf("resolve registry root %q: %w", root, err)
 	}
 
-	return Registry{Root: filepath.Clean(absRoot), StaticIndex: opts.StaticIndex}, nil
+	absRoot = filepath.Clean(absRoot)
+	if err := DetectInterruptedUpdate(absRoot); err != nil {
+		return Registry{}, err
+	}
+
+	return Registry{Root: absRoot, StaticIndex: opts.StaticIndex}, nil
 }
 
 // Resolve returns the newest non-yanked version of name.
