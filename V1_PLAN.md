@@ -297,7 +297,7 @@ repair.
 
 Work:
 
-- [ ] Expand `doctor` into a read-only audit of canonical layout types, state
+- [x] Expand `doctor` into a read-only audit of canonical layout types, state
       schema/records, exact prefixes, executable sources, owned links,
       dependency edges, stale staging/orphans, operation-lock health, and active
       registry revision/validity.

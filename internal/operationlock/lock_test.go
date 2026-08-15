@@ -48,3 +48,17 @@ func TestAcquireRejectsSymlink(t *testing.T) {
 		t.Fatalf("outside file = %q, want unchanged", data)
 	}
 }
+
+func TestAcquireExistingDoesNotCreateMissingLock(t *testing.T) {
+	root := t.TempDir()
+	lock, err := AcquireExisting(root, Shared)
+	if err != nil {
+		t.Fatalf("AcquireExisting() error = %v", err)
+	}
+	if lock != nil {
+		t.Fatal("AcquireExisting() lock is non-nil, want nil")
+	}
+	if _, err := os.Lstat(filepath.Join(root, FileName)); !os.IsNotExist(err) {
+		t.Fatalf("Lstat() error = %v, want missing lock", err)
+	}
+}

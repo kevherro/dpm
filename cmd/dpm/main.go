@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kevherro/dpm/internal/config"
+	"github.com/kevherro/dpm/internal/doctor"
 	"github.com/kevherro/dpm/internal/install"
 	"github.com/kevherro/dpm/internal/maintain"
 	"github.com/kevherro/dpm/internal/operationlock"
@@ -436,7 +437,8 @@ func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.
 		return fmt.Errorf("usage: dpm doctor")
 	}
 
-	return withSharedLock(cfg, func() error {
+	report := doctor.Audit(ctx, cfg)
+	{
 		dirs := []string{
 			cfg.Root,
 			cfg.BinDir,
@@ -446,16 +448,13 @@ func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.
 			cfg.RegistryDir,
 			cfg.StateDir,
 		}
-		var missing []string
 		for _, dir := range dirs {
-			info, err := os.Stat(dir)
+			info, err := os.Lstat(dir)
 			if err != nil {
-				missing = append(missing, dir)
 				fmt.Fprintf(stdout, "missing %s\n", dir)
 				continue
 			}
 			if !info.IsDir() {
-				missing = append(missing, dir)
 				fmt.Fprintf(stdout, "not-dir %s\n", dir)
 				continue
 			}
@@ -473,12 +472,14 @@ func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.
 		} else {
 			fmt.Fprintf(stdout, "registry revision %s\n", rev)
 		}
-		if len(missing) > 0 {
-			return fmt.Errorf("doctor found %d filesystem issue(s)", len(missing))
+		for _, finding := range report.Findings {
+			fmt.Fprintf(stdout, "issue %s\n", finding)
 		}
-
+		if len(report.Findings) > 0 {
+			return fmt.Errorf("doctor found %d issue(s)", len(report.Findings))
+		}
 		return nil
-	})
+	}
 }
 
 func withSharedLock(cfg config.Config, fn func() error) (retErr error) {

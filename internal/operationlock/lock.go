@@ -29,6 +29,16 @@ type Lock struct {
 
 // Acquire blocks until the requested root-wide operation lock is held.
 func Acquire(root string, mode Mode) (*Lock, error) {
+	return acquire(root, mode, true)
+}
+
+// AcquireExisting blocks until an existing root-wide operation lock is held.
+// A missing lock is reported as (nil, nil), without creating it.
+func AcquireExisting(root string, mode Mode) (*Lock, error) {
+	return acquire(root, mode, false)
+}
+
+func acquire(root string, mode Mode, create bool) (*Lock, error) {
 	if root == "" {
 		return nil, fmt.Errorf("operation lock root is empty")
 	}
@@ -44,7 +54,14 @@ func Acquire(root string, mode Mode) (*Lock, error) {
 		return nil, fmt.Errorf("inspect operation lock %s: %w", path, err)
 	}
 
-	fd, err := syscall.Open(path, syscall.O_CREAT|syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+	flags := syscall.O_RDWR | syscall.O_CLOEXEC | syscall.O_NOFOLLOW
+	if create {
+		flags |= syscall.O_CREAT
+	}
+	fd, err := syscall.Open(path, flags, 0o600)
+	if !create && errors.Is(err, syscall.ENOENT) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("open operation lock %s: %w", path, err)
 	}
