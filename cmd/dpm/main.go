@@ -17,6 +17,7 @@ import (
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/install"
 	"github.com/kevherro/dpm/internal/maintain"
+	"github.com/kevherro/dpm/internal/operationlock"
 	"github.com/kevherro/dpm/internal/registry"
 	"github.com/kevherro/dpm/internal/state"
 	"github.com/kevherro/dpm/internal/version"
@@ -214,80 +215,86 @@ func runList(cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 0 {
 		return fmt.Errorf("usage: dpm list")
 	}
-	records, err := state.New(cfg).List()
-	if err != nil {
-		return err
-	}
-	for _, record := range records {
-		fmt.Fprintf(stdout, "%s %s\n", record.Name, record.Version)
-	}
+	return withSharedLock(cfg, func() error {
+		records, err := state.New(cfg).List()
+		if err != nil {
+			return err
+		}
+		for _, record := range records {
+			fmt.Fprintf(stdout, "%s %s\n", record.Name, record.Version)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func runSearch(cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: dpm search <query>")
 	}
-	reg, err := newRegistry(cfg)
-	if err != nil {
-		return err
-	}
-	matches, err := reg.Search(args[0])
-	if err != nil {
-		return err
-	}
-	for _, match := range matches {
-		fmt.Fprintln(stdout, formatSearchResult(match))
-	}
+	return withSharedLock(cfg, func() error {
+		reg, err := newRegistry(cfg)
+		if err != nil {
+			return err
+		}
+		matches, err := reg.Search(args[0])
+		if err != nil {
+			return err
+		}
+		for _, match := range matches {
+			fmt.Fprintln(stdout, formatSearchResult(match))
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func runInfo(cfg config.Config, args []string, stdout io.Writer) error {
 	if len(args) != 1 {
 		return fmt.Errorf("usage: dpm info <name>")
 	}
-	reg, err := newRegistry(cfg)
-	if err != nil {
-		return err
-	}
-	pkg, err := optionalPackage(reg, args[0])
-	if err != nil {
-		return err
-	}
-	m, err := reg.Resolve(args[0])
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(stdout, "name %s\n", m.Name)
-	if pkg.Name != "" {
-		fmt.Fprintf(stdout, "summary %s\n", pkg.Summary)
-		fmt.Fprintf(stdout, "homepage %s\n", pkg.Homepage)
-		fmt.Fprintf(stdout, "license %s\n", pkg.License)
-		if len(pkg.Categories) > 0 {
-			fmt.Fprintf(stdout, "categories %s\n", strings.Join(pkg.Categories, " "))
-		} else {
-			fmt.Fprintln(stdout, "categories")
+	return withSharedLock(cfg, func() error {
+		reg, err := newRegistry(cfg)
+		if err != nil {
+			return err
 		}
-	}
-	fmt.Fprintf(stdout, "version %s\n", m.Version)
-	if len(m.Dependencies) > 0 {
-		fmt.Fprintf(stdout, "dependencies %s\n", strings.Join(m.Dependencies, " "))
-	} else {
-		fmt.Fprintln(stdout, "dependencies")
-	}
-	fmt.Fprintf(stdout, "yanked %t\n", m.Yanked)
-	if m.YankReason != "" {
-		fmt.Fprintf(stdout, "yank_reason %s\n", m.YankReason)
-	}
-	for _, artifact := range m.Artifacts {
-		fmt.Fprintf(stdout, "artifact %s/%s %s\n", artifact.OS, artifact.Arch, artifact.URL)
-	}
-	fmt.Fprintf(stdout, "bins %s\n", strings.Join(m.Install.Bins, " "))
+		pkg, err := optionalPackage(reg, args[0])
+		if err != nil {
+			return err
+		}
+		m, err := reg.Resolve(args[0])
+		if err != nil {
+			return err
+		}
 
-	return nil
+		fmt.Fprintf(stdout, "name %s\n", m.Name)
+		if pkg.Name != "" {
+			fmt.Fprintf(stdout, "summary %s\n", pkg.Summary)
+			fmt.Fprintf(stdout, "homepage %s\n", pkg.Homepage)
+			fmt.Fprintf(stdout, "license %s\n", pkg.License)
+			if len(pkg.Categories) > 0 {
+				fmt.Fprintf(stdout, "categories %s\n", strings.Join(pkg.Categories, " "))
+			} else {
+				fmt.Fprintln(stdout, "categories")
+			}
+		}
+		fmt.Fprintf(stdout, "version %s\n", m.Version)
+		if len(m.Dependencies) > 0 {
+			fmt.Fprintf(stdout, "dependencies %s\n", strings.Join(m.Dependencies, " "))
+		} else {
+			fmt.Fprintln(stdout, "dependencies")
+		}
+		fmt.Fprintf(stdout, "yanked %t\n", m.Yanked)
+		if m.YankReason != "" {
+			fmt.Fprintf(stdout, "yank_reason %s\n", m.YankReason)
+		}
+		for _, artifact := range m.Artifacts {
+			fmt.Fprintf(stdout, "artifact %s/%s %s\n", artifact.OS, artifact.Arch, artifact.URL)
+		}
+		fmt.Fprintf(stdout, "bins %s\n", strings.Join(m.Install.Bins, " "))
+
+		return nil
+	})
 }
 
 func optionalPackage(reg registry.Registry, name string) (registry.Package, error) {
@@ -321,7 +328,7 @@ func formatSearchResult(match registry.SearchResult) string {
 	return match.Name + "\t" + match.Summary + "\t" + strings.Join(match.Categories, ",")
 }
 
-func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {
+func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) (retErr error) {
 	if len(args) != 0 {
 		return fmt.Errorf("usage: dpm update")
 	}
@@ -331,6 +338,13 @@ func runUpdate(ctx context.Context, cfg config.Config, args []string, stdout io.
 	if err := cfg.EnsureDirs(); err != nil {
 		return err
 	}
+	lock, err := operationlock.Acquire(cfg.Root, operationlock.Exclusive)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		retErr = errors.Join(retErr, lock.Close())
+	}()
 	if err := cfg.RequireInsideRoot(cfg.RegistryDir); err != nil {
 		return err
 	}
@@ -417,47 +431,69 @@ func runDoctor(ctx context.Context, cfg config.Config, args []string, stdout io.
 		return fmt.Errorf("usage: dpm doctor")
 	}
 
-	dirs := []string{
-		cfg.Root,
-		cfg.BinDir,
-		cfg.PkgsDir,
-		cfg.DownloadsDir,
-		cfg.CacheDir,
-		cfg.RegistryDir,
-		cfg.StateDir,
-	}
-	var missing []string
-	for _, dir := range dirs {
-		info, err := os.Stat(dir)
+	return withSharedLock(cfg, func() error {
+		dirs := []string{
+			cfg.Root,
+			cfg.BinDir,
+			cfg.PkgsDir,
+			cfg.DownloadsDir,
+			cfg.CacheDir,
+			cfg.RegistryDir,
+			cfg.StateDir,
+		}
+		var missing []string
+		for _, dir := range dirs {
+			info, err := os.Stat(dir)
+			if err != nil {
+				missing = append(missing, dir)
+				fmt.Fprintf(stdout, "missing %s\n", dir)
+				continue
+			}
+			if !info.IsDir() {
+				missing = append(missing, dir)
+				fmt.Fprintf(stdout, "not-dir %s\n", dir)
+				continue
+			}
+			fmt.Fprintf(stdout, "ok %s\n", dir)
+		}
+
+		if !pathContains(cfg.BinDir) {
+			fmt.Fprintf(stdout, "path missing %s\n", cfg.BinDir)
+		}
+		fmt.Fprintf(stdout, "registry url %s\n", cfg.RegistryURL)
+		fmt.Fprintf(stdout, "registry path %s\n", cfg.RegistryDir)
+		rev, err := registry.Revision(ctx, cfg.RegistryDir)
 		if err != nil {
-			missing = append(missing, dir)
-			fmt.Fprintf(stdout, "missing %s\n", dir)
-			continue
+			fmt.Fprintf(stdout, "registry revision unavailable: %v\n", err)
+		} else {
+			fmt.Fprintf(stdout, "registry revision %s\n", rev)
 		}
-		if !info.IsDir() {
-			missing = append(missing, dir)
-			fmt.Fprintf(stdout, "not-dir %s\n", dir)
-			continue
+		if len(missing) > 0 {
+			return fmt.Errorf("doctor found %d filesystem issue(s)", len(missing))
 		}
-		fmt.Fprintf(stdout, "ok %s\n", dir)
-	}
 
-	if !pathContains(cfg.BinDir) {
-		fmt.Fprintf(stdout, "path missing %s\n", cfg.BinDir)
+		return nil
+	})
+}
+
+func withSharedLock(cfg config.Config, fn func() error) (retErr error) {
+	if err := cfg.ValidateLayout(); err != nil {
+		return err
 	}
-	fmt.Fprintf(stdout, "registry url %s\n", cfg.RegistryURL)
-	fmt.Fprintf(stdout, "registry path %s\n", cfg.RegistryDir)
-	rev, err := registry.Revision(ctx, cfg.RegistryDir)
+	if _, err := os.Lstat(cfg.Root); errors.Is(err, os.ErrNotExist) {
+		return fn()
+	} else if err != nil {
+		return fmt.Errorf("inspect dpm root %s: %w", cfg.Root, err)
+	}
+	lock, err := operationlock.Acquire(cfg.Root, operationlock.Shared)
 	if err != nil {
-		fmt.Fprintf(stdout, "registry revision unavailable: %v\n", err)
-	} else {
-		fmt.Fprintf(stdout, "registry revision %s\n", rev)
+		return err
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("doctor found %d filesystem issue(s)", len(missing))
-	}
+	defer func() {
+		retErr = errors.Join(retErr, lock.Close())
+	}()
 
-	return nil
+	return fn()
 }
 
 func runRegistry(ctx context.Context, cfg config.Config, args []string, stdout io.Writer) error {

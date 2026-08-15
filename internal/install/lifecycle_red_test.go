@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kevherro/dpm/internal/config"
+	"github.com/kevherro/dpm/internal/operationlock"
 	"github.com/kevherro/dpm/internal/state"
 )
 
@@ -284,6 +285,8 @@ func TestConcurrentListDoesNotObservePartialInstallGraph(t *testing.T) {
 
 	readDone := make(chan []state.Record, 1)
 	go func() {
+		lock, _ := operationlock.Acquire(cfg.Root, operationlock.Shared)
+		defer lock.Close()
 		records, _ := state.New(cfg).List()
 		readDone <- records
 	}()

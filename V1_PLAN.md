@@ -203,7 +203,7 @@ ordinary failure and concurrent commands without adding upgrade semantics.
 
 Work:
 
-- [ ] Add a root-wide shared/exclusive operation lock. `install`, `remove`, and
+- [x] Add a root-wide shared/exclusive operation lock. `install`, `remove`, and
       `update` take the exclusive lock; `list`, `search`, `info`, and `doctor`
       take the appropriate shared state/registry lock. `help` and `version` do
       not need the root.

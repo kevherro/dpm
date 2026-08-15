@@ -17,6 +17,7 @@ import (
 	"github.com/kevherro/dpm/internal/config"
 	"github.com/kevherro/dpm/internal/link"
 	"github.com/kevherro/dpm/internal/manifest"
+	"github.com/kevherro/dpm/internal/operationlock"
 	"github.com/kevherro/dpm/internal/registry"
 	"github.com/kevherro/dpm/internal/state"
 )
@@ -76,10 +77,20 @@ func Remove(cfg config.Config, name string) (RemoveResult, error) {
 	return remove(cfg, name, nil)
 }
 
-func remove(cfg config.Config, name string, hook lifecycleHook) (RemoveResult, error) {
+func remove(cfg config.Config, name string, hook lifecycleHook) (result RemoveResult, retErr error) {
 	if err := cfg.RequireClientMutation(); err != nil {
 		return RemoveResult{}, err
 	}
+	if err := cfg.EnsureDirs(); err != nil {
+		return RemoveResult{}, err
+	}
+	lock, err := operationlock.Acquire(cfg.Root, operationlock.Exclusive)
+	if err != nil {
+		return RemoveResult{}, err
+	}
+	defer func() {
+		retErr = errors.Join(retErr, lock.Close())
+	}()
 	store := state.New(cfg)
 	record, err := store.Get(name)
 	if err != nil {
@@ -106,13 +117,20 @@ func remove(cfg config.Config, name string, hook lifecycleHook) (RemoveResult, e
 }
 
 // Install installs name and its dependencies.
-func (i Installer) Install(ctx context.Context, cfg config.Config, name string) (InstallResult, error) {
+func (i Installer) Install(ctx context.Context, cfg config.Config, name string) (result InstallResult, retErr error) {
 	if err := cfg.RequireClientMutation(); err != nil {
 		return InstallResult{}, err
 	}
 	if err := cfg.EnsureDirs(); err != nil {
 		return InstallResult{}, err
 	}
+	lock, err := operationlock.Acquire(cfg.Root, operationlock.Exclusive)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	defer func() {
+		retErr = errors.Join(retErr, lock.Close())
+	}()
 	reg, err := registry.NewWithOptions(registry.Options{
 		Root:        cfg.RegistryDir,
 		StaticIndex: cfg.RegistryStaticIndex,
@@ -121,7 +139,6 @@ func (i Installer) Install(ctx context.Context, cfg config.Config, name string) 
 		return InstallResult{}, err
 	}
 	store := state.New(cfg)
-	var result InstallResult
 	if err := i.installOne(ctx, cfg, reg, store, name, map[string]bool{}, &result); err != nil {
 		return InstallResult{}, err
 	}
