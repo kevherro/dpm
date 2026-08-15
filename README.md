@@ -42,7 +42,7 @@ dpm registry prepare [options] <path>
 dpm registry generate-index <path>
 ```
 
-The registry is currently a local checkout at `~/.dpm/registry` with package
+The registry is a Git checkout at `~/.dpm/registry` with package
 metadata under `packages/<name>/package.toml` and version manifests under
 `packages/<name>/versions/<version>/dpm.toml`.
 
@@ -97,13 +97,45 @@ Use `--bin <path>` when the executable archive paths need to be declared
 manually. Use `--skip-install-verify` only when preparing metadata on a machine
 that cannot run the local install verification step.
 
-End-to-end `hello` demo:
+## Install dpm
+
+dpm v1 supports macOS 14 or newer on Apple silicon. Git from the Xcode Command
+Line Tools is required for registry updates:
+
+```sh
+xcode-select --install
+```
+
+Download `dpm_1.0.0_darwin_arm64.tar.gz` and `SHA256SUMS` from the
+[v1.0.0 release](https://github.com/kevherro/dpm/releases/tag/v1.0.0), then
+verify and install it without `sudo`:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+tar -xzf dpm_1.0.0_darwin_arm64.tar.gz
+mkdir -p "$HOME/.local/bin"
+cp dpm_1.0.0_darwin_arm64/dpm "$HOME/.local/bin/dpm"
+export PATH="$HOME/.local/bin:$HOME/.dpm/bin:$PATH"
+dpm update
+dpm install ripgrep
+rg --version
+dpm list
+dpm install ripgrep
+dpm remove ripgrep
+```
+
+Add the two PATH entries to your shell profile yourself if you want them in
+future shells. dpm never edits shell configuration.
+
+## Development and registry maintenance
+
+End-to-end `hello` test:
 
 ```sh
 go test ./cmd/dpm -run TestRunHelloEndToEnd -v
 ```
 
-Real `ripgrep` demo using the local development registry:
+Real `ripgrep` flow using a local development registry:
 
 ```sh
 export DPM_ROOT="$(mktemp -d /tmp/dpm-root.XXXXXX)"
@@ -142,7 +174,33 @@ Troubleshooting:
 - Link conflict: dpm will not overwrite unrelated files in `~/.dpm/bin`. Remove
   or rename the conflicting file, or run `dpm remove <name>` if the link belongs
   to an installed dpm package.
+- State, prefix, link, or interrupted-operation drift: run `dpm doctor`. Doctor
+  is read-only and names the evidence to inspect. V1 intentionally has no
+  automatic repair command; preserve anything you need, then remove only the
+  named stale path or reset the whole dpm root.
+- Missing Git: install the Xcode Command Line Tools with
+  `xcode-select --install`, then rerun `dpm update`.
+- Rejected registry update: the previous checkout remains active. Run
+  `dpm doctor`; if interrupted-update staging is reported, inspect and remove
+  the named staging path before retrying.
 
-This project is at `v0.1.0`: the core end-to-end flow works, and the remaining
-work is safety hardening, trusted distribution, and release productization. See
-[V1_PLAN.md](V1_PLAN.md) for the path to `v1.0.0`.
+## Storage, trust, and limitations
+
+- Installed state is under `~/.dpm/state`; isolated package prefixes are under
+  `~/.dpm/pkgs`; links are under `~/.dpm/bin`.
+- Downloads are cached by SHA-256 under `~/.dpm/downloads`. Every cache hit and
+  download is verified. `dpm remove` removes package state, its prefix, and its
+  owned links, but intentionally retains cached downloads. Remove
+  `~/.dpm/downloads` manually to clear the cache when no dpm command is running.
+- Registry metadata is obtained over anonymous HTTPS Git. Artifact bytes are
+  fetched from the pinned HTTPS URL in that metadata. SHA-256 proves the bytes
+  match the registry declaration; it does not prove a declared binary is safe.
+  Optional signed registry snapshots can additionally authenticate generated
+  metadata when trusted keys are configured.
+- V1 has no upgrades, downgrades, version constraints, dependency garbage
+  collection, automatic repair, self-update, Intel support, source builds, or
+  package install scripts. See [THREAT_MODEL.md](THREAT_MODEL.md) for the full
+  support and security boundary.
+
+Security issues should be reported privately as described in
+[SECURITY.md](SECURITY.md).

@@ -308,11 +308,11 @@ Work:
       rejected registry update, and unsupported state schema.
 - [ ] Test command exit codes and multiline security/recovery errors where
       formatting matters.
-- [ ] Replace development-only onboarding with public instructions for obtaining
+- [x] Replace development-only onboarding with public instructions for obtaining
       and verifying dpm, copying it to a user-owned path such as
       `~/.local/bin`, installing Git if necessary, running `dpm update`, adding
       `~/.dpm/bin` to PATH manually, and completing the ripgrep journey.
-- [ ] Document supported scope, network/cache behavior, state location,
+- [x] Document supported scope, network/cache behavior, state location,
       uninstall/cache cleanup, safe recovery, the v1 trust model, and known
       limitations. Add `SECURITY.md` with a private reporting route.
 
