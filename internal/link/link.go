@@ -84,6 +84,20 @@ func LinkBins(cfg config.Config, prefix string, bins []string) ([]BinLink, error
 
 // RemoveBins removes dpm-managed symlinks recorded in links.
 func RemoveBins(cfg config.Config, links []BinLink) error {
+	if err := ValidateRemoveBins(cfg, links); err != nil {
+		return err
+	}
+	for _, link := range links {
+		if err := os.Remove(link.Link); err != nil {
+			return fmt.Errorf("remove bin link %s: %w", link.Link, err)
+		}
+	}
+
+	return nil
+}
+
+// ValidateRemoveBins checks that every recorded link is owned before removal.
+func ValidateRemoveBins(cfg config.Config, links []BinLink) error {
 	if err := cfg.ValidateLayout(); err != nil {
 		return err
 	}
@@ -94,7 +108,7 @@ func RemoveBins(cfg config.Config, links []BinLink) error {
 		if filepath.Dir(link.Link) != cfg.BinDir {
 			return fmt.Errorf("bin link %s is not directly in %s", link.Link, cfg.BinDir)
 		}
-		if err := removeLink(link); err != nil {
+		if err := validateOwnedLink(link); err != nil {
 			return err
 		}
 	}
@@ -202,10 +216,10 @@ func needsCreate(link BinLink) (bool, error) {
 	return true, nil
 }
 
-func removeLink(link BinLink) error {
+func validateOwnedLink(link BinLink) error {
 	info, err := os.Lstat(link.Link)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return fmt.Errorf("%w: owned bin link %s is missing", ErrConflict, link.Link)
 	}
 	if err != nil {
 		return fmt.Errorf("stat bin link %s: %w", link.Link, err)
@@ -221,10 +235,6 @@ func removeLink(link BinLink) error {
 	if target != link.Source {
 		return fmt.Errorf("%w: %s points to %s, not %s", ErrConflict, link.Link, target, link.Source)
 	}
-	if err := os.Remove(link.Link); err != nil {
-		return fmt.Errorf("remove bin link %s: %w", link.Link, err)
-	}
-
 	return nil
 }
 

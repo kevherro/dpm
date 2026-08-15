@@ -232,7 +232,7 @@ func TestRemoveBinsRemovesOwnedLinks(t *testing.T) {
 	}
 }
 
-func TestRemoveBinsIsIdempotentForMissingLinks(t *testing.T) {
+func TestRemoveBinsRejectsMissingOwnedLink(t *testing.T) {
 	cfg := testConfig(t)
 	link := BinLink{
 		Name:   "hello",
@@ -240,8 +240,8 @@ func TestRemoveBinsIsIdempotentForMissingLinks(t *testing.T) {
 		Link:   filepath.Join(cfg.BinDir, "hello"),
 	}
 
-	if err := RemoveBins(cfg, []BinLink{link}); err != nil {
-		t.Fatalf("RemoveBins() error = %v", err)
+	if err := RemoveBins(cfg, []BinLink{link}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("RemoveBins() error = %v, want ErrConflict", err)
 	}
 }
 

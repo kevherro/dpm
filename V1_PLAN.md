@@ -209,17 +209,17 @@ Work:
       not need the root.
 - [ ] Introduce an immutable registry view identified by one Git revision and
       resolve the complete, de-duplicated dependency graph through it.
-- [ ] Preflight cycles, missing dependencies, platform artifacts, installed
+- [x] Preflight cycles, missing dependencies, platform artifacts, installed
       version conflicts, duplicate bin names, and existing bin ownership before
       committing a prefix, link, or state record.
-- [ ] Fetch, verify, extract, and validate every new package in staging before
+- [x] Fetch, verify, extract, and validate every new package in staging before
       committing the graph.
-- [ ] On an ordinary returned error, roll back only prefixes, links, and state
+- [x] On an ordinary returned error, roll back only prefixes, links, and state
       created by that operation; preserve all pre-existing packages and verified
       content-addressed cache entries.
-- [ ] Preflight every remove target and link before changing anything. Refuse
+- [x] Preflight every remove target and link before changing anything. Refuse
       removal when installed state names a dependent; list the blockers.
-- [ ] Before reporting “already installed,” verify the exact prefix, declared
+- [x] Before reporting “already installed,” verify the exact prefix, declared
       executables, owned links, and dependency records. Drift returns a precise
       integrity error and points to `dpm doctor`.
 - [ ] Detect stale staging, prefix-without-state, link-without-state, and other
