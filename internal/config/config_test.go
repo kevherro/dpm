@@ -22,7 +22,10 @@ func TestDefaultUsesHomeDPMRoot(t *testing.T) {
 		t.Fatalf("Default() error = %v", err)
 	}
 
-	wantRoot := filepath.Join(home, ".dpm")
+	wantRoot, err := canonicalRoot(filepath.Join(home, ".dpm"))
+	if err != nil {
+		t.Fatalf("canonicalRoot() error = %v", err)
+	}
 	if cfg.Root != wantRoot {
 		t.Fatalf("Root = %q, want %q", cfg.Root, wantRoot)
 	}
@@ -41,10 +44,14 @@ func TestDefaultUsesDPMRootOverride(t *testing.T) {
 		t.Fatalf("Default() error = %v", err)
 	}
 
-	if cfg.Root != root {
-		t.Fatalf("Root = %q, want %q", cfg.Root, root)
+	wantRoot, err := canonicalRoot(root)
+	if err != nil {
+		t.Fatalf("canonicalRoot() error = %v", err)
 	}
-	assertLayout(t, cfg, root)
+	if cfg.Root != wantRoot {
+		t.Fatalf("Root = %q, want %q", cfg.Root, wantRoot)
+	}
+	assertLayout(t, cfg, wantRoot)
 }
 
 func TestDefaultRejectsDPMRootOutsideHomeAndTemp(t *testing.T) {
@@ -237,12 +244,12 @@ func TestRootSafety(t *testing.T) {
 		path string
 		want bool
 	}{
-		{name: "root", path: root, want: true},
-		{name: "child", path: filepath.Join(root, "bin", "hello"), want: true},
-		{name: "clean child", path: filepath.Join(root, "bin", "..", "pkgs"), want: true},
-		{name: "parent", path: filepath.Dir(root), want: false},
-		{name: "sibling", path: root + "-sibling", want: false},
-		{name: "traversal", path: filepath.Join(root, "..", "outside"), want: false},
+		{name: "root", path: cfg.Root, want: true},
+		{name: "child", path: filepath.Join(cfg.Root, "bin", "hello"), want: true},
+		{name: "clean child", path: filepath.Join(cfg.Root, "bin", "..", "pkgs"), want: true},
+		{name: "parent", path: filepath.Dir(cfg.Root), want: false},
+		{name: "sibling", path: cfg.Root + "-sibling", want: false},
+		{name: "traversal", path: filepath.Join(cfg.Root, "..", "outside"), want: false},
 	}
 
 	for _, tt := range tests {
@@ -265,10 +272,10 @@ func TestRequireInsideRootRejectsOutsidePath(t *testing.T) {
 		t.Fatalf("FromRoot() error = %v", err)
 	}
 
-	if err := cfg.RequireInsideRoot(filepath.Join(root, "bin")); err != nil {
+	if err := cfg.RequireInsideRoot(filepath.Join(cfg.Root, "bin")); err != nil {
 		t.Fatalf("RequireInsideRoot() error = %v", err)
 	}
-	if err := cfg.RequireInsideRoot(filepath.Dir(root)); err == nil {
+	if err := cfg.RequireInsideRoot(filepath.Dir(cfg.Root)); err == nil {
 		t.Fatal("RequireInsideRoot(outside) error = nil, want error")
 	}
 }
