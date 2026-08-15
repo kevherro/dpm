@@ -128,7 +128,7 @@ func remove(cfg config.Config, name string, hook lifecycleHook) (result RemoveRe
 	}
 	if len(blockers) > 0 {
 		slices.Sort(blockers)
-		return RemoveResult{}, fmt.Errorf("refusing to remove %s: required by %s", name, strings.Join(blockers, ", "))
+		return RemoveResult{}, fmt.Errorf("refusing to remove %s: required by %s; remove the dependent package(s) first", name, strings.Join(blockers, ", "))
 	}
 	prefix := filepath.Join(cfg.PkgsDir, record.Name, record.Version)
 	info, err := os.Lstat(prefix)
@@ -290,7 +290,7 @@ func (i Installer) planInstall(cfg config.Config, reg registry.Registry, store s
 		for _, bin := range plan.manifest.Install.Bins {
 			linkPath := filepath.Join(cfg.BinDir, filepath.Base(bin))
 			if _, err := os.Lstat(linkPath); err == nil {
-				return nil, fmt.Errorf("%w: %s already exists", link.ErrConflict, linkPath)
+				return nil, fmt.Errorf("%w: %s already exists; remove or rename the conflicting path, then retry", link.ErrConflict, linkPath)
 			} else if !errors.Is(err, os.ErrNotExist) {
 				return nil, fmt.Errorf("stat bin path %s: %w", linkPath, err)
 			}
@@ -565,7 +565,7 @@ func SelectArtifact(m manifest.Manifest, goos, goarch string) (manifest.Artifact
 		}
 	}
 
-	return manifest.Artifact{}, fmt.Errorf("no artifact for %s/%s in %s %s", goos, goarch, m.Name, m.Version)
+	return manifest.Artifact{}, fmt.Errorf("no artifact for %s/%s in %s %s; dpm v1 supports darwin/arm64 and the registry must publish that artifact", goos, goarch, m.Name, m.Version)
 }
 
 func normalizeOS(goos string) string {

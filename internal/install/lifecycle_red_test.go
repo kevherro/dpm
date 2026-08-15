@@ -154,6 +154,10 @@ func TestInstallPreflightsWholeGraphBeforeMutation(t *testing.T) {
 			tt.setup(t, cfg)
 			if _, err := redInstaller(nil).Install(context.Background(), cfg, "app"); err == nil {
 				t.Fatal("Install() error = nil, want preflight error")
+			} else if tt.name == "parent bin conflict" && !strings.Contains(err.Error(), "remove or rename") {
+				t.Fatalf("Install() error = %v, want actionable bin conflict", err)
+			} else if tt.name == "unsupported parent platform" && !strings.Contains(err.Error(), "supports darwin/arm64") {
+				t.Fatalf("Install() error = %v, want supported-platform guidance", err)
 			}
 
 			for _, name := range []string{"ready", "library", "app"} {
@@ -198,7 +202,7 @@ func TestRemoveRefusesInstalledDependency(t *testing.T) {
 	}
 
 	_, err := Remove(cfg, "library")
-	if err == nil || !strings.Contains(err.Error(), "app") {
+	if err == nil || !strings.Contains(err.Error(), "app") || !strings.Contains(err.Error(), "remove the dependent") {
 		t.Fatalf("Remove(library) error = %v, want dependent app refusal", err)
 	}
 	assertPackageHealthy(t, cfg, "library")
