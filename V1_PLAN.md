@@ -330,11 +330,11 @@ Goal: prove the exact published artifact on the exact supported platform.
 
 Required client CI on macOS 14+ Apple silicon:
 
-- [ ] `gofmt -d -s .` is empty.
-- [ ] `go test -count=1 ./...` passes.
-- [ ] `go vet ./...` passes.
-- [ ] `go test -race -count=1 ./...` passes.
-- [ ] The hermetic hello lifecycle, outside-root sentinel suite, dependency
+- [x] `gofmt -d -s .` is empty.
+- [x] `go test -count=1 ./...` passes.
+- [x] `go vet ./...` passes.
+- [x] `go test -race -count=1 ./...` passes.
+- [x] The hermetic hello lifecycle, outside-root sentinel suite, dependency
       rollback suite, concurrency suite, and registry activation suite pass.
 - [x] The release target builds and its `version --verbose` metadata is tested.
 
