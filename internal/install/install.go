@@ -109,6 +109,9 @@ func remove(cfg config.Config, name string, hook lifecycleHook) (result RemoveRe
 		retErr = errors.Join(retErr, lock.Close())
 	}()
 	store := state.New(cfg)
+	if err := detectInterruptedOperations(cfg, store); err != nil {
+		return RemoveResult{}, err
+	}
 	record, err := store.Get(name)
 	if err != nil {
 		return RemoveResult{}, err
@@ -218,6 +221,9 @@ func (i Installer) Install(ctx context.Context, cfg config.Config, name string) 
 		return InstallResult{}, err
 	}
 	store := state.New(cfg)
+	if err := detectInterruptedOperations(cfg, store); err != nil {
+		return InstallResult{}, err
+	}
 	plans, err := i.planInstall(cfg, reg, store, name)
 	if err != nil {
 		return InstallResult{}, err

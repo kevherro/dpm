@@ -265,6 +265,50 @@ func TestSameVersionReinstallRejectsDrift(t *testing.T) {
 	}
 }
 
+func TestInstallRejectsInterruptedOperationEvidence(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*testing.T, config.Config)
+	}{
+		{name: "stale install staging", setup: func(t *testing.T, cfg config.Config) {
+			if err := os.Mkdir(filepath.Join(cfg.CacheDir, ".install-stale"), 0o755); err != nil {
+				t.Fatalf("Mkdir() error = %v", err)
+			}
+		}},
+		{name: "stale remove staging", setup: func(t *testing.T, cfg config.Config) {
+			if err := os.Mkdir(filepath.Join(cfg.CacheDir, ".remove-stale"), 0o755); err != nil {
+				t.Fatalf("Mkdir() error = %v", err)
+			}
+		}},
+		{name: "prefix without state", setup: func(t *testing.T, cfg config.Config) {
+			if err := os.MkdirAll(filepath.Join(cfg.PkgsDir, "orphan", "1.0.0"), 0o755); err != nil {
+				t.Fatalf("MkdirAll() error = %v", err)
+			}
+		}},
+		{name: "link without state", setup: func(t *testing.T, cfg config.Config) {
+			if err := os.Symlink(filepath.Join(cfg.PkgsDir, "orphan", "1.0.0", "bin", "orphan"), filepath.Join(cfg.BinDir, "orphan")); err != nil {
+				t.Fatalf("Symlink() error = %v", err)
+			}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := testInstallConfig(t)
+			if err := cfg.EnsureDirs(); err != nil {
+				t.Fatalf("EnsureDirs() error = %v", err)
+			}
+			tt.setup(t, cfg)
+			writeInstallGraph(t, cfg, "app", nil)
+
+			if _, err := redInstaller(nil).Install(context.Background(), cfg, "app"); err == nil || !strings.Contains(err.Error(), "doctor") {
+				t.Fatalf("Install() error = %v, want interrupted-operation guidance", err)
+			}
+			assertPackageAbsent(t, cfg, "app")
+		})
+	}
+}
+
 func TestConcurrentListDoesNotObservePartialInstallGraph(t *testing.T) {
 	cfg := testInstallConfig(t)
 	writeInstallGraph(t, cfg, "app", []string{"library"})

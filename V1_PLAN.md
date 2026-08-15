@@ -222,7 +222,7 @@ Work:
 - [x] Before reporting “already installed,” verify the exact prefix, declared
       executables, owned links, and dependency records. Drift returns a precise
       integrity error and points to `dpm doctor`.
-- [ ] Detect stale staging, prefix-without-state, link-without-state, and other
+- [x] Detect stale staging, prefix-without-state, link-without-state, and other
       interrupted-operation evidence. V1 may refuse with safe manual recovery
       guidance; automatic crash recovery and a general repair command are
       deferred.
