@@ -248,7 +248,7 @@ a failed update cannot replace the last usable checkout.
 
 Client work:
 
-- [ ] Change the default URL to the anonymous HTTPS Git URL
+- [x] Change the default URL to the anonymous HTTPS Git URL
       `https://github.com/kevherro/dpm-registry.git`.
 - [ ] Preflight Git before creating or changing the registry directory. Missing
       Git gets an actionable error explaining the tested Apple Command Line
