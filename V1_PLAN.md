@@ -301,7 +301,7 @@ Work:
       schema/records, exact prefixes, executable sources, owned links,
       dependency edges, stale staging/orphans, operation-lock health, and active
       registry revision/validity.
-- [ ] Emit package/version-aware checksum errors with expected and actual
+- [x] Emit package/version-aware checksum errors with expected and actual
       digests.
 - [ ] Add actionable errors for bin conflicts, dependent removal, state drift,
       unsupported platform/version syntax, lock contention, missing Git,

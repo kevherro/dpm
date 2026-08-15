@@ -348,7 +348,7 @@ func (i Installer) stageInstall(ctx context.Context, cfg config.Config, plans []
 		}
 		downloaded, err := i.Fetcher.Fetch(ctx, cfg, plan.artifact)
 		if err != nil {
-			return err
+			return fmt.Errorf("fetch artifact for %s %s: %w", plan.manifest.Name, plan.manifest.Version, err)
 		}
 		plan.downloaded = downloaded
 		staging, err := os.MkdirTemp(cfg.CacheDir, ".install-"+plan.manifest.Name+"-"+plan.manifest.Version+"-*")

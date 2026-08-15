@@ -207,6 +207,27 @@ func TestInstallRejectsDependencyCycle(t *testing.T) {
 	}
 }
 
+func TestInstallChecksumErrorNamesPackageAndVersion(t *testing.T) {
+	cfg := testInstallConfig(t)
+	artifact, _ := makePackageArtifact(t, "hello")
+	writeRegistryManifest(t, cfg, manifestFixture{
+		name:    "hello",
+		version: "1.0.0",
+		url:     "file://" + artifact,
+		sha256:  strings.Repeat("0", 64),
+	})
+
+	_, err := (Installer{GOOS: "darwin", GOARCH: "arm64"}).Install(context.Background(), cfg, "hello")
+	if err == nil {
+		t.Fatal("Install() error = nil, want checksum mismatch")
+	}
+	for _, want := range []string{"hello 1.0.0", "expected " + strings.Repeat("0", 64), "actual "} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Install() error = %q, want %q", err, want)
+		}
+	}
+}
+
 func TestRemoveRemovesLinksPrefixAndState(t *testing.T) {
 	cfg := testInstallConfig(t)
 	artifactPath, artifactSHA := makePackageArtifact(t, "hello")
